@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const data = JSON.parse(fs.readFileSync(new URL('../public/data/sky-cultures.json', import.meta.url), 'utf8'));
 const html = fs.readFileSync(new URL('../public/atlas/index.html', import.meta.url), 'utf8');
+const publicIndex = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const audio = fs.readFileSync(new URL('../public/atlas/audio-engine.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../public/atlas/app.js', import.meta.url), 'utf8');
 const starIds = new Set(data.stars.map((star) => star.id));
@@ -51,6 +52,8 @@ for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConn
   assert(app.includes(`${visual}(`), `Missing gesture visual stage: ${visual}`);
 }
 assert(app.includes('audio.interactionSnapshot(id)'), 'Audio and visuals must share interaction state.');
+assert(app.includes("fetch('../data/sky-cultures.json')"), 'Sky-culture data must use a GitHub Pages-compatible relative path.');
+assert(publicIndex.includes('./atlas/'), 'Static root must enter the standalone atlas.');
 assert(!/\.(wav|mp3|ogg|flac)/i.test(audio), 'Audio engine unexpectedly references a sample file.');
 
 console.log(`Validated ${data.cultures.length} cultures, ${data.stars.length} stars, fixed-position compare geometry and synthesis-only audio.`);
