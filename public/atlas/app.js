@@ -7,6 +7,10 @@ const wrapHours = (value) => ((value + 12) % 24 + 24) % 24 - 12;
 const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 }[char]));
+const visualNoise = (seed) => {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+};
 
 const canvas = $('#sky');
 const ctx = canvas.getContext('2d');
@@ -47,6 +51,9 @@ const state = {
   trail: [],
   visualEvents: [],
   keyboardHeld: new Set(),
+  keyboardGestureIds: new Map(),
+  gestureRequests: new Map(),
+  gestureVisuals: new Map(),
   autoLoops: 0,
 };
 
@@ -99,6 +106,45 @@ function keyboardStepIndex(event) {
   if (base < 0) return -1;
   const index = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
   return index < audio.sequence.length ? index : -1;
+}
+
+async function pressInteractiveStep(step, index, id) {
+  const previousRequest = state.gestureRequests.get(id);
+  if (previousRequest) previousRequest.released = true;
+  audio.release(id, true);
+  const request = { released: false };
+  state.gestureRequests.set(id, request);
+  const snapshot = await audio.press(step, index, id);
+  if (!snapshot) return;
+  const gesture = {
+    id,
+    step,
+    index,
+    startedAt: snapshot.pressedAt,
+    releasedAt: null,
+    nextSpawnAt: snapshot.pressedAt + 0.35,
+    seed: Math.abs((Number(step.id) || index + 1) * 53 + index * 131),
+    nodes: [{ x: 0, y: 0, parent: -1, secondaryParent: -1, bornAt: snapshot.pressedAt, scale: 1 }],
+  };
+  state.gestureVisuals.set(id, gesture);
+  if (request.released) audio.release(id, false);
+}
+
+function releaseInteractiveStep(id) {
+  const request = state.gestureRequests.get(id);
+  if (request) request.released = true;
+  audio.release(id, false);
+}
+
+function releaseGestureVisual(id, immediate = false) {
+  const gesture = state.gestureVisuals.get(id);
+  if (!gesture) return;
+  if (immediate) {
+    state.gestureVisuals.delete(id);
+    state.gestureRequests.delete(id);
+    return;
+  }
+  if (gesture.releasedAt == null) gesture.releasedAt = audio.clockSnapshot().now;
 }
 
 function centroid(item) {
@@ -242,6 +288,7 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
   state.visibleStarIds = new Set(culture(id).stars);
   state.selected = null;
   state.activeStep = -1;
+  audio.releaseAll(false);
   audio.setSequence([]);
   $('#detail').hidden = true;
   const item = culture(id);
@@ -284,7 +331,7 @@ function setMode(mode) {
     $('#compare-copy').textContent = `${culture(state.cultureId).nativeName.toUpperCase()} → ${culture(state.compareId).nativeName.toUpperCase()}`;
   }
   $('#legend').innerHTML = mode === 'play'
-    ? '星图 = 音乐拓扑 · 恒星 = 局部音序步骤<br />ENTER → INSIDE → EXIT → CORRIDOR → NEXT NODE'
+    ? 'PRESS → LIQUID NODE · HOLD → PULSE / TOPOLOGY · RELEASE → 2.8s TAIL<br />ENTER → INSIDE → EXIT → CORRIDOR → NEXT NODE'
     : mode === 'compare'
       ? '恒星位置保持不动 · 文化关系重新形成<br />STARS REMAIN FIXED · RELATIONS REFORM'
       : '拖动 = 移动 · 滚轮 / 双指 = 缩放 · 点击 = 进入星座<br />DRAG = PAN · WHEEL / PINCH = ZOOM · CLICK = ENTER';
@@ -306,7 +353,7 @@ function showDetail(item) {
     .filter((name, index, all) => name && name !== item.nativeName && all.indexOf(name) === index)
     .join(' / ');
   const mappedCount = Math.min(item.starCount, KEYBOARD_STEPS.length * 2);
-  $('#keyboard-note').textContent = `键盘 / KEYBOARD · ${mappedCount} 颗星已映射 · 1–0 · Q–P · A–L · Z–M${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
+  $('#keyboard-note').textContent = `键盘 / KEYBOARD · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
@@ -547,6 +594,113 @@ function drawEvents(now) {
   }
 }
 
+function spawnTopologyNode(gesture, snapshot, now) {
+  if (gesture.nodes.length >= 64) return;
+  const index = gesture.nodes.length;
+  const seed = gesture.seed + index * 17 + snapshot.twoBarIndex * 101;
+  const parentLimit = Math.max(1, Math.min(index, 18));
+  const parentIndex = index < 5 ? 0 : Math.floor(visualNoise(seed) * parentLimit);
+  const parent = gesture.nodes[parentIndex] || gesture.nodes[0];
+  const angle = visualNoise(seed + 1) * Math.PI * 2 + snapshot.beatPhase * 0.45;
+  const reach = 22 + visualNoise(seed + 2) * 48 + Math.min(34, snapshot.holdDuration * 4.5);
+  const secondaryParent = index > 8 && index % 4 === 0
+    ? Math.floor(visualNoise(seed + 3) * parentLimit)
+    : -1;
+  gesture.nodes.push({
+    x: parent.x + Math.cos(angle) * reach,
+    y: parent.y + Math.sin(angle) * reach,
+    parent: parentIndex,
+    secondaryParent,
+    bornAt: now,
+    scale: 0.72 + visualNoise(seed + 4) * 0.85,
+    phase: visualNoise(seed + 5) * Math.PI * 2,
+  });
+}
+
+function drawLiquidConnection(root, from, to, alpha, widthScale = 1) {
+  const midX = (from.x + to.x) / 2;
+  const midY = (from.y + to.y) / 2;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const bend = Math.sin((from.phase || 0) + frame * 0.018) * Math.min(22, length * 0.22);
+  const controlX = root.x + midX - (dy / length) * bend;
+  const controlY = root.y + midY + (dx / length) * bend;
+  ctx.beginPath();
+  ctx.moveTo(root.x + from.x, root.y + from.y);
+  ctx.quadraticCurveTo(controlX, controlY, root.x + to.x, root.y + to.y);
+  ctx.strokeStyle = `rgba(210,210,210,${alpha})`;
+  ctx.lineWidth = widthScale;
+  ctx.stroke();
+}
+
+function drawGestureVisuals() {
+  if (!state.gestureVisuals.size) return;
+  const clock = audio.clockSnapshot();
+  const maxRipple = Math.min(width, height) * 0.42;
+  for (const [id, gesture] of state.gestureVisuals) {
+    const snapshot = audio.interactionSnapshot(id);
+    if (snapshot?.holding) {
+      const visualDensity = clamp(snapshot.density * 0.58, 3.8, 8.4);
+      while (gesture.nextSpawnAt <= clock.now + 0.025 && gesture.nodes.length < 64) {
+        spawnTopologyNode(gesture, snapshot, gesture.nextSpawnAt);
+        gesture.nextSpawnAt += 1 / visualDensity;
+      }
+    }
+    const releaseAge = gesture.releasedAt == null ? 0 : clock.now - gesture.releasedAt;
+    if (releaseAge > 2.9) {
+      state.gestureVisuals.delete(id);
+      state.gestureRequests.delete(id);
+      continue;
+    }
+    const root = starPoint(gesture.step);
+    const pressAge = Math.max(0, clock.now - gesture.startedAt);
+    const tailAlpha = gesture.releasedAt == null ? 1 : clamp(1 - releaseAge / 2.9, 0, 1) ** 1.4;
+    const holdingEnergy = snapshot?.holding ? 1 + (1 - Math.abs(snapshot.beatPhase - 0.5) * 2) * 0.16 : 1;
+
+    for (let ring = 0; ring < 4; ring += 1) {
+      const progress = clamp((pressAge - ring * 0.11) / (1.5 + ring * 0.18), 0, 1);
+      if (progress <= 0 || progress >= 1) continue;
+      const radius = 18 + progress * maxRipple * (0.78 + ring * 0.08);
+      ctx.beginPath();
+      ctx.arc(root.x, root.y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(226,226,226,${(1 - progress) ** 1.8 * 0.27 * tailAlpha})`;
+      ctx.lineWidth = ring === 0 ? 1.2 : 0.65;
+      ctx.stroke();
+    }
+
+    for (let nodeIndex = 1; nodeIndex < gesture.nodes.length; nodeIndex += 1) {
+      const node = gesture.nodes[nodeIndex];
+      const parent = gesture.nodes[node.parent] || gesture.nodes[0];
+      const nodeAge = Math.max(0, clock.now - node.bornAt);
+      const spread = 1 + Math.min(0.62, nodeAge * 0.115);
+      const drift = Math.sin(clock.beat * Math.PI + node.phase) * (3 + node.scale * 2);
+      const animated = { x: node.x * spread + Math.cos(node.phase) * drift, y: node.y * spread + Math.sin(node.phase) * drift, phase: node.phase };
+      const parentAnimated = { x: parent.x * spread, y: parent.y * spread, phase: parent.phase || 0 };
+      const birth = clamp(nodeAge / 0.22, 0, 1);
+      const alpha = birth * tailAlpha * (snapshot?.holding ? 0.2 : 0.13);
+      drawLiquidConnection(root, parentAnimated, animated, alpha, 0.65 + node.scale * 0.35);
+      if (node.secondaryParent >= 0) {
+        const secondary = gesture.nodes[node.secondaryParent];
+        if (secondary) drawLiquidConnection(root, { x: secondary.x * spread, y: secondary.y * spread, phase: secondary.phase || 0 }, animated, alpha * 0.48, 0.55);
+      }
+      const nodeRadius = (2.4 + node.scale * 3.2) * birth * holdingEnergy;
+      ctx.fillStyle = `rgba(232,232,232,${Math.min(0.62, alpha * 2.6)})`;
+      ctx.beginPath(); ctx.arc(root.x + animated.x, root.y + animated.y, nodeRadius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(242,242,242,${alpha * 1.35})`;
+      ctx.beginPath(); ctx.arc(root.x + animated.x, root.y + animated.y, nodeRadius * 2.1, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    const coreRadius = snapshot?.holding ? 15 + Math.sin(snapshot.beatPhase * Math.PI) * 7 : 10 + Math.min(10, pressAge * 30);
+    const glow = ctx.createRadialGradient(root.x, root.y, 0, root.x, root.y, coreRadius * 4.5);
+    glow.addColorStop(0, `rgba(255,255,255,${0.28 * tailAlpha})`);
+    glow.addColorStop(0.22, `rgba(214,214,214,${0.12 * tailAlpha})`);
+    glow.addColorStop(1, 'rgba(160,160,160,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(root.x, root.y, coreRadius * 4.5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
 function draw(now) {
   frame += 1;
   ctx.fillStyle = state.localView ? 'rgba(2,2,2,.23)' : '#020202';
@@ -560,6 +714,7 @@ function draw(now) {
   } else drawCultureLines(state.visibleCultureId, 1, true);
   drawStars();
   drawCorridors();
+  drawGestureVisuals();
   drawMicroSequencer();
   drawEvents(now);
   if (frame % 3 === 0) drawOverview();
@@ -610,12 +765,12 @@ stage.addEventListener('pointerdown', (event) => {
   state.pointer = {
     id: event.pointerId, x: event.clientX, y: event.clientY,
     startX: event.clientX, startY: event.clientY, moved: false,
-    playing: Boolean(star), lastStar: null,
+    playing: Boolean(star), lastStar: null, gestureId: `pointer:${event.pointerId}`,
   };
   if (star) {
     state.pointer.lastStar = star.step.id;
     state.activeStep = star.index;
-    audio.audition(star.step, star.index);
+    pressInteractiveStep(star.step, star.index, state.pointer.gestureId);
     $('#status').textContent = `INSIDE · STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
   }
 });
@@ -628,9 +783,10 @@ stage.addEventListener('pointermove', (event) => {
   if (pointer.playing) {
     const star = hitSequenceStar(event.clientX, event.clientY);
     if (star && star.step.id !== pointer.lastStar) {
+      releaseInteractiveStep(pointer.gestureId);
       pointer.lastStar = star.step.id;
       state.activeStep = star.index;
-      audio.audition(star.step, star.index);
+      pressInteractiveStep(star.step, star.index, pointer.gestureId);
       state.trail.push({ x: star.point.x, y: star.point.y, time: performance.now() });
       $('#status').textContent = `INSIDE · PATH STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
     }
@@ -662,11 +818,18 @@ stage.addEventListener('pointerup', (event) => {
       } else focusLandmark(item);
     }
   }
-  if (pointer.playing) $('#status').textContent = `EXIT GESTURE · ${state.selected?.nativeName?.toUpperCase() || ''} · RELEASE`;
+  if (pointer.playing) {
+    releaseInteractiveStep(pointer.gestureId);
+    if (!audio.running) state.activeStep = -1;
+    $('#status').textContent = `RELEASE · ${state.selected?.nativeName?.toUpperCase() || ''} · FILTER / REVERB TAIL`;
+  }
   state.pointer = null;
 });
 
-stage.addEventListener('pointercancel', () => { state.pointer = null; });
+stage.addEventListener('pointercancel', () => {
+  if (state.pointer?.gestureId) releaseInteractiveStep(state.pointer.gestureId);
+  state.pointer = null;
+});
 stage.addEventListener('dblclick', (event) => {
   const item = hitConstellation(event.clientX, event.clientY);
   if (item) {
@@ -762,6 +925,15 @@ audio.addEventListener('step', (event) => {
   }
 });
 
+audio.addEventListener('gesture', (event) => {
+  const gesture = event.detail;
+  if (gesture.phase === 'hold') {
+    $('#status').textContent = `HOLD · PULSE + TEXTURE · ${gesture.density.toFixed(1)} DENSITY · ${BPM} BPM`;
+  } else if (gesture.phase === 'release') {
+    releaseGestureVisual(gesture.id, false);
+  } else if (gesture.phase === 'cancel') releaseGestureVisual(gesture.id, true);
+});
+
 $('#play').addEventListener('click', async () => {
   if (!audio.sequence.length) {
     const first = state.selected || culture().constellations.find((item) => item.starCount >= 3);
@@ -792,6 +964,7 @@ $('#panic').addEventListener('click', () => {
   state.auto = false; state.autoLoops = 0; state.activeStep = -1;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
+  state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
 });
 $('#fullscreen').addEventListener('click', toggleFullscreen);
 document.addEventListener('fullscreenchange', () => {
@@ -845,7 +1018,9 @@ document.addEventListener('keydown', (event) => {
       const step = audio.sequence[index];
       state.keyboardHeld.add(index);
       state.activeStep = index;
-      audio.audition(step, index);
+      const gestureId = `key:${event.code}:${event.shiftKey ? 1 : 0}`;
+      state.keyboardGestureIds.set(event.code, gestureId);
+      pressInteractiveStep(step, index, gestureId);
       $('#status').textContent = `键盘演奏 / KEYBOARD · ${keyboardBinding(index).label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
       return;
     }
@@ -867,6 +1042,9 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('keyup', (event) => {
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return;
+  const gestureId = state.keyboardGestureIds.get(event.code);
+  if (gestureId) releaseInteractiveStep(gestureId);
+  state.keyboardGestureIds.delete(event.code);
   state.keyboardHeld.delete(base);
   state.keyboardHeld.delete(base + KEYBOARD_STEPS.length);
   if (!audio.running && state.keyboardHeld.size === 0) state.activeStep = -1;
