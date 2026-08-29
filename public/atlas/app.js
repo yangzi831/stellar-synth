@@ -15,6 +15,16 @@ const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
 
+const KEYBOARD_STEPS = [
+  ['Digit1', '1'], ['Digit2', '2'], ['Digit3', '3'], ['Digit4', '4'], ['Digit5', '5'],
+  ['Digit6', '6'], ['Digit7', '7'], ['Digit8', '8'], ['Digit9', '9'], ['Digit0', '0'],
+  ['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'],
+  ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
+  ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
+  ['KeyH', 'H'], ['KeyJ', 'J'], ['KeyK', 'K'], ['KeyL', 'L'],
+  ['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M'],
+];
+
 const state = {
   data: null,
   stars: new Map(),
@@ -36,6 +46,7 @@ const state = {
   pointer: null,
   trail: [],
   visualEvents: [],
+  keyboardHeld: new Set(),
   autoLoops: 0,
 };
 
@@ -65,6 +76,29 @@ function starPoint(star, view = state.view) {
 
 function constellationStars(item) {
   return item.stars.map((id) => state.stars.get(id)).filter(Boolean);
+}
+
+function constellationZh(item) {
+  return item?.localizedName?.zh || '';
+}
+
+function constellationLabel(item) {
+  const zh = constellationZh(item);
+  return zh && zh !== item.nativeName ? `${item.nativeName} · ${zh}` : item.nativeName;
+}
+
+function keyboardBinding(index) {
+  const bank = Math.floor(index / KEYBOARD_STEPS.length);
+  if (bank > 1) return null;
+  const entry = KEYBOARD_STEPS[index % KEYBOARD_STEPS.length];
+  return { code: entry[0], label: `${bank ? '⇧' : ''}${entry[1]}`, shift: bank === 1 };
+}
+
+function keyboardStepIndex(event) {
+  const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+  if (base < 0) return -1;
+  const index = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
+  return index < audio.sequence.length ? index : -1;
 }
 
 function centroid(item) {
@@ -192,9 +226,10 @@ function populateLandmarkSelect() {
     .forEach((item) => {
       const option = document.createElement('option');
       option.value = item.id;
-      option.textContent = item.nativeName === item.translatedName
-        ? item.nativeName
-        : `${item.nativeName} / ${item.translatedName}`;
+      const zh = constellationZh(item);
+      const names = [item.nativeName, zh, item.translatedName]
+        .filter((name, index, all) => name && all.indexOf(name) === index);
+      option.textContent = names.join(' / ');
       select.appendChild(option);
     });
   if (state.selected) select.value = state.selected.id;
@@ -265,8 +300,13 @@ function showDetail(item) {
   state.selected = item;
   const current = culture();
   $('#detail-culture').textContent = `${current.regionLabel || current.regionGroup} · ${current.localizedName?.zh || current.nativeName}`;
+  const zh = constellationZh(item);
   $('#detail-native').textContent = item.nativeName;
-  $('#detail-translated').textContent = item.translatedName === item.nativeName ? '' : item.translatedName;
+  $('#detail-translated').textContent = [zh, item.translatedName]
+    .filter((name, index, all) => name && name !== item.nativeName && all.indexOf(name) === index)
+    .join(' / ');
+  const mappedCount = Math.min(item.starCount, KEYBOARD_STEPS.length * 2);
+  $('#keyboard-note').textContent = `键盘 / KEYBOARD · ${mappedCount} 颗星已映射 · 1–0 · Q–P · A–L · Z–M${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
@@ -274,7 +314,7 @@ function showDetail(item) {
   $('#detail-story').textContent = item.story || current.introduction || current.overview || 'Source data contains geometry and names; no separate short narrative is attached to this landmark.';
   $('#detail').hidden = false;
   $('#landmark-select').value = item.id;
-  $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${item.nativeName.toUpperCase()} · ${item.starCount} 颗星 / STEPS`;
+  $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${constellationLabel(item)} · ${item.starCount} 颗星 / STEPS`;
   audio.setSequence(sequenceFor(item));
 }
 
@@ -381,7 +421,7 @@ function drawCultureLines(cultureId, alpha, active = false) {
       if (point && point.x > -60 && point.x < width + 60 && point.y > -30 && point.y < height + 30) {
         ctx.fillStyle = `rgba(190,190,190,${selected ? 0.72 : alpha * 0.2})`;
         ctx.font = `${selected ? 9 : 7}px ui-monospace, monospace`;
-        ctx.fillText(item.nativeName, point.x + 5, point.y - 5);
+        ctx.fillText(constellationLabel(item), point.x + 5, point.y - 5);
       }
     }
   }
@@ -395,17 +435,29 @@ function drawStars() {
     const selected = selectedIds.has(star.id);
     const cultural = state.visibleStarIds.has(star.id);
     const stepIndex = selected ? audio.sequence.findIndex((entry) => entry.id === star.id) : -1;
-    const active = selected && state.activeStep >= 0 && stepIndex === state.activeStep;
-    const radius = active ? 2.8 : selected ? 2.15 : cultural
-      ? clamp(2.5 - (star.mag + 1) * 0.18, 1.15, 2.2)
-      : clamp(1.65 - (star.mag + 1) * 0.12, 0.65, 1.25);
-    if (cultural && star.mag < 3.2) {
-      const glow = 3.1 + (3.2 - star.mag) * 0.7;
-      ctx.fillStyle = `rgba(210,210,210,${selected ? 0.16 : 0.08})`;
+    const active = selected && ((state.activeStep >= 0 && stepIndex === state.activeStep) || state.keyboardHeld.has(stepIndex));
+    const radius = active ? 4.2 : selected ? 3.3 : cultural
+      ? clamp(2.9 - (star.mag + 1) * 0.18, 1.45, 2.55)
+      : clamp(2.05 - (star.mag + 1) * 0.13, 0.9, 1.55);
+    if (selected || star.mag < 3.2) {
+      const glow = selected ? 5.4 : 3.3 + (3.2 - star.mag) * 0.75;
+      const glowAlpha = selected ? 0.2 : cultural ? 0.11 : 0.055;
+      ctx.fillStyle = `rgba(220,220,220,${glowAlpha})`;
       ctx.beginPath(); ctx.arc(point.x, point.y, glow, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.fillStyle = active ? '#f2f2f2' : selected ? '#d8d8d8' : cultural ? '#858585' : '#464646';
+    ctx.fillStyle = active ? '#ffffff' : selected ? '#eeeeee' : cultural ? '#a0a0a0' : '#626262';
     ctx.fillRect(point.x - radius / 2, point.y - radius / 2, radius, radius);
+    const binding = selected && state.localView ? keyboardBinding(stepIndex) : null;
+    if (binding) {
+      ctx.font = '7px ui-monospace, monospace';
+      const labelWidth = binding.label.startsWith('⇧') ? 16 : 10;
+      const labelX = point.x + 5;
+      const labelY = point.y - 5;
+      ctx.fillStyle = active ? 'rgba(242,242,242,.92)' : 'rgba(189,189,189,.48)';
+      ctx.fillText(binding.label, labelX, labelY);
+      ctx.strokeStyle = active ? 'rgba(242,242,242,.48)' : 'rgba(189,189,189,.16)';
+      ctx.strokeRect(labelX - 2, labelY - 8, labelWidth, 11);
+    }
     if (active) {
       ctx.strokeStyle = 'rgba(242,242,242,.34)';
       ctx.beginPath(); ctx.arc(point.x, point.y, 8 + (frame % 24), 0, Math.PI * 2); ctx.stroke();
@@ -785,6 +837,19 @@ $$('[data-overlay]').forEach((button) => button.addEventListener('click', () => 
 $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = true; });
 
 document.addEventListener('keydown', (event) => {
+  const editable = event.target.matches?.('input, textarea, select, [contenteditable="true"]');
+  if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && $('#launch').hidden && $('#overlay').hidden && $('#drawer').hidden) {
+    const index = keyboardStepIndex(event);
+    if (index >= 0) {
+      event.preventDefault();
+      const step = audio.sequence[index];
+      state.keyboardHeld.add(index);
+      state.activeStep = index;
+      audio.audition(step, index);
+      $('#status').textContent = `键盘演奏 / KEYBOARD · ${keyboardBinding(index).label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
+      return;
+    }
+  }
   if (event.key === 'Escape') {
     if (!$('#overlay').hidden) $('#overlay').hidden = true;
     else if (!$('#drawer').hidden) closeDrawer();
@@ -797,6 +862,14 @@ document.addEventListener('keydown', (event) => {
   if (event.code === 'Space' && !event.repeat && event.target.tagName !== 'BUTTON') {
     event.preventDefault(); $('#play').click();
   }
+});
+
+document.addEventListener('keyup', (event) => {
+  const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+  if (base < 0) return;
+  state.keyboardHeld.delete(base);
+  state.keyboardHeld.delete(base + KEYBOARD_STEPS.length);
+  if (!audio.running && state.keyboardHeld.size === 0) state.activeStep = -1;
 });
 
 async function init() {

@@ -39,3 +39,4 @@ Illustration files are not copied into `public/` and are not referenced by the r
 - J2000-style RA/Dec coordinates and magnitudes are retained from HYG v4.1.
 - Fixed global star coordinates are shared by ATLAS, PLAY and COMPARE.
 - The adapter records authors, license, source files and illustration policy on every available culture object.
+- Chinese constellation labels are a local interface layer in `scripts/constellation-zh.mjs`; they do not replace upstream native names. Standard Western names follow established Chinese astronomical usage, while translations or transliterations for other cultures remain editorial aids and should receive culture-specific scholarly review before being treated as authoritative.

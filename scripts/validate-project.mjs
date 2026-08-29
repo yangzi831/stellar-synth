@@ -20,6 +20,10 @@ assert(!cultures.has('kamilaroi'), 'ND-licensed Kamilaroi transformed data must 
 for (const culture of data.cultures) {
   assert(culture.authors, `${culture.id} is missing authors.`);
   assert(culture.license, `${culture.id} is missing a license.`);
+  for (const constellation of culture.constellations) {
+    assert(constellation.localizedName?.zh, `${culture.id}/${constellation.id} is missing a Chinese display name.`);
+    assert(!constellation.localizedName.zh.startsWith('中文名：'), `${culture.id}/${constellation.id} still uses a Chinese-name fallback.`);
+  }
   for (const line of culture.lines) {
     for (const hip of line) assert(starIds.has(hip), `${culture.id} references missing HIP ${hip}.`);
   }

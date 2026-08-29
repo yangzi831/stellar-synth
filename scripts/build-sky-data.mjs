@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { constellationChineseName } from './constellation-zh.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -168,6 +169,11 @@ for (const [id, config] of Object.entries(cultureConfig)) {
       id: item.id,
       nativeName: item.common_name?.native || item.common_name?.pronounce || item.common_name?.english || item.id,
       translatedName: item.common_name?.english || item.common_name?.native || item.id,
+      localizedName: {
+        zh: id === 'chinese'
+          ? (item.common_name?.native || item.common_name?.english || item.id)
+          : constellationChineseName(id, item.id, `中文名：${item.common_name?.english || item.common_name?.native || item.id}`),
+      },
       pronunciation: item.common_name?.pronounce || '',
       lines: lines.map((line) => line.filter((hip) => starCatalog.has(hip))).filter((line) => line.length > 0),
       stars: starIds,

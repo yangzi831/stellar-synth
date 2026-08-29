@@ -16,10 +16,11 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 
 - A local copy of the D5 v13 baseline, including the v12 runtime and v13 map patch.
 - ATLAS, PLAY and COMPARE modes.
-- Chinese/English interface labels and bilingual culture introductions.
+- Chinese/English interface labels, bilingual culture introductions and local Chinese display names for all 572 loaded constellations/asterisms.
 - One-click culture entry from the launch screen.
 - Direct constellation focus, persistent zoom controls, all-sky reset, previous/next navigation and an overview locator.
 - Brighter culture-specific star points rendered above constellation lines.
+- Computer-keyboard performance for up to 72 landmark stars: `1–0`, `Q–P`, `A–L`, `Z–M`, with `Shift` opening the second key bank.
 - 150 BPM synthesis-only Web Audio engine derived from D5; no samples or recordings.
 - True stellar positions and apparent magnitudes for 3,719 HIP stars.
 - A build-time adapter for Stellarium `index.json` and `description.md` data.
