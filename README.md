@@ -1,0 +1,86 @@
+# 星图演奏 / One Sky, Many Worlds
+
+**A Playable Atlas of Sky Cultures**
+
+An independent, local-first web instrument built from **D5 v13 — Sequencer Map** by Ewan Qian / 钱誉文. The original D5 canvas and Web Audio approach is preserved as a local reference build, then extended into an atlas for comparing sky-culture structures over fixed stellar positions.
+
+## What is included
+
+- A local copy of the D5 v13 baseline, including the v12 runtime and v13 map patch.
+- ATLAS, PLAY and COMPARE modes.
+- Chinese/English interface labels and bilingual culture introductions.
+- One-click culture entry from the launch screen.
+- Direct constellation focus, persistent zoom controls, all-sky reset, previous/next navigation and an overview locator.
+- Brighter culture-specific star points rendered above constellation lines.
+- 150 BPM synthesis-only Web Audio engine derived from D5; no samples or recordings.
+- True stellar positions and apparent magnitudes for 3,719 HIP stars.
+- A build-time adapter for Stellarium `index.json` and `description.md` data.
+- Dynamic culture menus grouped by region.
+- Pan, wheel/pinch-style zoom, constellation selection, local landmark views, micro sequencers, route playback, fullscreen, STOP and PANIC.
+- Runtime ABOUT and CREDITS / SOURCES pages.
+- Offline production assets; the demo does not request a remote API.
+
+## Local preview
+
+The development preview runs at:
+
+`http://localhost:3000/`
+
+The standalone atlas is served at:
+
+`http://localhost:3000/atlas/index.html`
+
+The unmodified-layout D5 v13 reference is available at:
+
+`http://localhost:3000/reference/d5-v13/index.html`
+
+The single reference-runtime change is a defensive clamp for a negative canvas arc radius that otherwise throws intermittently in the original DROP animation.
+
+## Project commands
+
+```bash
+npm run dev
+npm test
+npm run build
+```
+
+`npm run build` regenerates the local sky-culture adapter output before creating the production build.
+The repository includes the generated browser-ready JSON. The optional 32 MB HYG v4.1 CSV source catalog is not committed; set `HYG_CSV` to a local copy when you want to regenerate stellar positions from the raw catalog.
+
+## Available cultures
+
+- Chinese
+- Western
+- Egyptian
+- Indian Vedic / Nakshatras
+- Hawaiian Starlines
+- Māori
+- Tongan
+- Boorong
+- Inuit
+- Navajo
+- Blackfoot
+- Northern Andes
+- Aztec
+- Tupi-Guarani
+- Tukano
+
+## Verified but not loaded
+
+- **Babylonian** — not present in the selected upstream `stellarium-skycultures` snapshot.
+- **Arabic Lunar Stations** — upstream data is CC BY-ND 4.0 with a separate permission limited to Stellarium Labs; transformed adapter output is therefore not shipped.
+- **Kamilaroi/Euahlayi** — upstream data is CC BY-NC-ND 4.0 with a separate permission limited to Stellarium developers; transformed adapter output is therefore not shipped.
+
+## Still incomplete
+
+- Culture-specific renderers for Chinese enclosure hierarchy, lunar rings, horizon gates, dark Milky Way regions, Egyptian decan clocks and landscape correspondences are represented in the data model but are not yet specialized visual renderers.
+- Chinese data retains individual Xingguan geometry and names. A full scholarly navigation layer for 三垣 → 四象 → 二十八宿 → 星官 → 恒星 needs an additional curated hierarchy dataset; it is not inferred from Western constellations.
+- Constellation stories are shown when the source attaches one; otherwise the culture introduction is used.
+- No upstream illustration is bundled. Illustration-specific licensing would need a separate review before inclusion.
+
+## Credits and licenses
+
+Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.  
+Original code used and modified under the MIT License.
+
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) and [DATA_SOURCES_AND_LICENSES.md](./DATA_SOURCES_AND_LICENSES.md) for source-level details.
