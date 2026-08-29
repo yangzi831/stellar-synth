@@ -1052,7 +1052,7 @@ document.addEventListener('keyup', (event) => {
 
 async function init() {
   try {
-    const response = await fetch('/data/sky-cultures.json');
+    const response = await fetch('../data/sky-cultures.json');
     if (!response.ok) throw new Error(`Data request failed: ${response.status}`);
     state.data = await response.json();
     state.stars = new Map(state.data.stars.map((item) => [item.id, item]));
