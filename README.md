@@ -4,6 +4,14 @@
 
 An independent, local-first web instrument built from **D5 v13 — Sequencer Map** by Ewan Qian / 钱誉文. The original D5 canvas and Web Audio approach is preserved as a local reference build, then extended into an atlas for comparing sky-culture structures over fixed stellar positions.
 
+## 在线试玩 / Live demo
+
+**[打开《星图演奏》 / Launch One Sky, Many Worlds](https://one-sky-many-worlds.yzi763343.chatgpt.site)**
+
+建议使用桌面浏览器与耳机。首次播放需要点击 `PLAY` 解锁浏览器音频；`PANIC` 可立即停止全部声音。
+
+Desktop browser and headphones are recommended. Click `PLAY` once to unlock browser audio; `PANIC` immediately stops all active voices.
+
 ## What is included
 
 - A local copy of the D5 v13 baseline, including the v12 runtime and v13 map patch.
