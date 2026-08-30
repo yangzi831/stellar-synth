@@ -54,6 +54,11 @@ for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConn
 assert(app.includes('audio.interactionSnapshot(id)'), 'Audio and visuals must share interaction state.');
 assert(app.includes("fetch('../data/sky-cultures.json')"), 'Sky-culture data must use a GitHub Pages-compatible relative path.');
 assert(publicIndex.includes('./atlas/'), 'Static root must enter the standalone atlas.');
+for (const line of ['Stellar Synth', '星宿频率', 'Play the Stars Across Cultures', '演奏不同文明眼中的星空']) {
+  assert(html.includes(line), `Missing required launch title line: ${line}`);
+}
+assert(html.includes('<title>Stellar Synth | 星宿频率</title>'), 'Browser title is not updated.');
+assert(/\.launch-title h1[^}]*text-transform:\s*none/.test(fs.readFileSync(new URL('../public/atlas/app.css', import.meta.url), 'utf8')), 'English launch title must preserve title case.');
 assert(!/\.(wav|mp3|ogg|flac)/i.test(audio), 'Audio engine unexpectedly references a sample file.');
 
 console.log(`Validated ${data.cultures.length} cultures, ${data.stars.length} stars, fixed-position compare geometry and synthesis-only audio.`);

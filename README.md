@@ -1,14 +1,14 @@
-# 星图演奏 / One Sky, Many Worlds
+# Stellar Synth / 星宿频率
 
-**A Playable Atlas of Sky Cultures**
+**Play the Stars Across Cultures / 演奏不同文明眼中的星空**
 
 An independent, local-first web instrument built from **D5 v13 — Sequencer Map** by Ewan Qian / 钱誉文. The original D5 canvas and Web Audio approach is preserved as a local reference build, then extended into an atlas for comparing sky-culture structures over fixed stellar positions.
 
 ## 在线试玩 / Live demo
 
-**[打开《星图演奏》 / Launch One Sky, Many Worlds](https://yangzi831.github.io/one-sky-many-worlds/)**
+**[打开 Stellar Synth / 星宿频率](https://yangzi831.github.io/stellar-synth/)**
 
-GitHub Pages is the primary public demo and is suitable for ordinary mobile and WeChat access. The alternate Sites deployment remains available at [one-sky-many-worlds.yzi763343.chatgpt.site](https://one-sky-many-worlds.yzi763343.chatgpt.site).
+GitHub Pages is the primary public demo and is suitable for ordinary mobile and WeChat access. The previous [one-sky-many-worlds GitHub Pages URL](https://yangzi831.github.io/one-sky-many-worlds/) is retained as a compatibility redirect. The alternate Sites deployment remains available at [one-sky-many-worlds.yzi763343.chatgpt.site](https://one-sky-many-worlds.yzi763343.chatgpt.site).
 
 建议使用桌面浏览器与耳机。首次播放需要点击 `PLAY` 解锁浏览器音频；`PANIC` 可立即停止全部声音。
 

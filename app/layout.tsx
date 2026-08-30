@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: '星图演奏 — A Playable Atlas of Sky Cultures',
-  description: 'One sky, many worlds: an interactive atlas and musical instrument for sky cultures.',
+  title: 'Stellar Synth | 星宿频率',
+  description: 'Play the Stars Across Cultures — 演奏不同文明眼中的星空',
 };
 
 export default function RootLayout({
