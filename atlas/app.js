@@ -205,6 +205,14 @@ function sequenceFor(item) {
   }).filter((item) => item.id);
 }
 
+function setAudioLandmark(item) {
+  audio.setSequence(sequenceFor(item), {
+    cultureId: state.visibleCultureId,
+    landmarkId: item?.id,
+    kind: item?.kind,
+  });
+}
+
 function resetView() {
   state.view = { centerRa: 12, centerDec: 0, zoom: 1, panX: 0, panY: 0 };
   state.localView = false;
@@ -382,7 +390,7 @@ function showDetail(item) {
   $('#detail').hidden = false;
   $('#landmark-select').value = item.id;
   $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${constellationLabel(item)} · ${item.starCount} 颗星 / STEPS`;
-  audio.setSequence(sequenceFor(item));
+  setAudioLandmark(item);
 }
 
 function focusLandmark(item = state.selected) {
@@ -399,7 +407,7 @@ function selectAdjacentLandmark(direction) {
   const currentIndex = Math.max(0, items.findIndex((item) => item.id === state.selected?.id));
   const next = items[(currentIndex + direction + items.length) % items.length];
   focusLandmark(next);
-  if (state.mode === 'play') audio.setSequence(sequenceFor(next));
+  if (state.mode === 'play') setAudioLandmark(next);
 }
 
 async function enterLandmark(item = state.selected, startSound = true) {
@@ -408,7 +416,11 @@ async function enterLandmark(item = state.selected, startSound = true) {
   state.selected = item;
   fitConstellation(item);
   const sequence = sequenceFor(item);
-  audio.setSequence(sequence);
+  audio.setSequence(sequence, {
+    cultureId: state.visibleCultureId,
+    landmarkId: item.id,
+    kind: item.kind,
+  });
   state.visualEvents.push({ type: 'enter', point: constellationPoint(item), time: performance.now() });
   $('#status').textContent = `ENTER · ${item.nativeName.toUpperCase()} · INSIDE LOCAL MICRO SEQUENCER`;
   if (startSound && !audio.running) await audio.start();
@@ -957,7 +969,7 @@ audio.addEventListener('gesture', (event) => {
 $('#play').addEventListener('click', async () => {
   if (!audio.sequence.length) {
     const first = state.selected || culture().constellations.find((item) => item.starCount >= 3);
-    if (first) { showDetail(first); audio.setSequence(sequenceFor(first)); }
+    if (first) { showDetail(first); setAudioLandmark(first); }
   }
   const running = await audio.toggle();
   $('#status').textContent = running ? `演奏中 / PLAYING · ${BPM} BPM · ${state.selected?.nativeName?.toUpperCase() || 'ATLAS'}` : '已停止 / STOPPED';
@@ -1002,7 +1014,7 @@ $('#detail-close').addEventListener('click', () => { $('#detail').hidden = true;
 $('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed));
 $('#enter-landmark').addEventListener('click', () => focusLandmark(state.selected));
 $('#play-landmark').addEventListener('click', async () => {
-  if (state.selected) audio.setSequence(sequenceFor(state.selected));
+  if (state.selected) setAudioLandmark(state.selected);
   if (!audio.running) await audio.start();
 });
 $('#previous-landmark').addEventListener('click', () => selectAdjacentLandmark(-1));

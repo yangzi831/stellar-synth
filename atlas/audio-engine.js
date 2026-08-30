@@ -15,16 +15,30 @@ const MAX_INTERACTIONS = 8;
 const MASTER_GAIN = 0.95;
 const HOLD_THRESHOLD_MS = 350;
 const TWO_BARS = BEAT * 8;
-const FOUR_BARS = BEAT * 16;
-const TONIC = 45; // A: one tonal centre for gestures, sequencer and arrangement.
-const MODE = [0, 2, 3, 5, 7, 8, 10]; // A natural minor / Aeolian.
-const SCALE = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19, 20, 22];
-const CHORD_PROGRESSION = [0, 5, 2, 6]; // i – VI – III – VII.
+const MODES = [
+  { id: 'aeolian', intervals: [0, 2, 3, 5, 7, 8, 10] },
+  { id: 'dorian', intervals: [0, 2, 3, 5, 7, 9, 10] },
+  { id: 'minor-pentatonic', intervals: [0, 3, 5, 7, 10] },
+  { id: 'lydian', intervals: [0, 2, 4, 6, 7, 9, 11] },
+  { id: 'harmonic-minor', intervals: [0, 2, 3, 5, 7, 8, 11] },
+];
+const TONICS = [38, 40, 41, 43, 45, 47];
+const METERS = [12, 14, 16, 20]; // 3/4, 7/8, 4/4, 5/4 in sixteenth steps.
+const PROGRESSIONS = [[0], [0, 5, 3], [0, 3, 5, 4], [0, 4, 5, 3], [0, 2, 6]];
 
-const scaleNote = (tonic, degree) => {
-  const octave = Math.floor(degree / MODE.length);
-  const index = ((degree % MODE.length) + MODE.length) % MODE.length;
-  return tonic + MODE[index] + octave * 12;
+const hashText = (value = '') => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const scaleNote = (tonic, degree, mode) => {
+  const octave = Math.floor(degree / mode.length);
+  const index = ((degree % mode.length) + mode.length) % mode.length;
+  return tonic + mode[index] + octave * 12;
 };
 
 const midi = (note) => 440 * 2 ** ((note - 69) / 12);
@@ -57,6 +71,7 @@ export class SequencerAudio extends EventTarget {
     this.arrangementStep = 0;
     this.nextArrangementTick = 0;
     this.sequence = [];
+    this.profile = this.createProfile([], {});
     this.active = new Set();
     this.interactions = new Map();
     this.interactionTimer = null;
@@ -133,9 +148,45 @@ export class SequencerAudio extends EventTarget {
     return buffer;
   }
 
-  setSequence(sequence) {
+  createProfile(sequence, identity = {}) {
+    const starSignature = sequence.slice(0, 24).map((step) => step.id).join(',');
+    const seed = hashText(`${identity.cultureId || 'sky'}:${identity.landmarkId || 'atlas'}:${starSignature}`);
+    const mode = MODES[seed % MODES.length];
+    const meterSteps = METERS[(seed >>> 3) % METERS.length];
+    const progression = PROGRESSIONS[(seed >>> 6) % PROGRESSIONS.length];
+    return {
+      seed,
+      modeId: mode.id,
+      mode: mode.intervals,
+      tonic: TONICS[(seed >>> 10) % TONICS.length],
+      meterSteps,
+      progression,
+      arpStride: [2, 3, 4][(seed >>> 14) % 3],
+      timbre: (seed >>> 17) % 4,
+      drumStyle: (seed >>> 20) % 4,
+      cadence: (seed >>> 23) % 3,
+    };
+  }
+
+  setSequence(sequence, identity = {}) {
     this.sequence = sequence || [];
+    this.profile = this.createProfile(this.sequence, identity);
     this.tick = 0;
+    this.arrangementStep = 0;
+    if (this.running && this.context) this.nextArrangementTick = this.context.currentTime + 0.035;
+    if (this.delay) {
+      const ratios = [0.5, 0.75, 1, 1.25];
+      this.delay.delayTime.setTargetAtTime(BEAT * ratios[this.profile.timbre], this.context.currentTime, 0.04);
+    }
+  }
+
+  degreeForStep(step, index = 0) {
+    const source = Math.abs((Number(step?.id) || index + 1) + index * 3);
+    return source % this.profile.mode.length;
+  }
+
+  noteForStep(step, index, octave = 0) {
+    return scaleNote(this.profile.tonic + octave, this.degreeForStep(step, index), this.profile.mode);
   }
 
   async toggle() {
@@ -352,13 +403,13 @@ export class SequencerAudio extends EventTarget {
     const ac = this.context;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.22, 0.92);
-    const note = TONIC + 12 + SCALE[Math.abs(step.id || index) % SCALE.length];
+    const note = this.noteForStep(step, index, 12);
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
     const envelope = ac.createGain();
     const panner = ac.createStereoPanner();
-    oscillator.type = index % 3 === 0 ? 'sine' : 'triangle';
+    oscillator.type = ['sine', 'triangle', 'triangle', 'sine'][this.profile.timbre];
     oscillator.frequency.setValueAtTime(midi(note + 12), time);
     oscillator.frequency.exponentialRampToValueAtTime(midi(note), time + 0.035);
     filter.type = 'lowpass'; filter.Q.value = 5.5;
@@ -378,12 +429,12 @@ export class SequencerAudio extends EventTarget {
   gesturePulse(session, time) {
     if (this.voices >= MAX_VOICES) return;
     const ac = this.context;
-    const note = TONIC + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
+    const note = this.noteForStep(session.step, session.index, session.octave);
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
     const envelope = ac.createGain();
     const panner = ac.createStereoPanner();
-    oscillator.type = session.index % 2 ? 'triangle' : 'sine';
+    oscillator.type = ['sine', 'triangle', 'sine', 'triangle'][this.profile.timbre];
     oscillator.frequency.value = midi(note);
     filter.type = 'lowpass'; filter.Q.value = 3.2; filter.frequency.value = session.cutoff;
     envelope.gain.setValueAtTime(0.0001, time);
@@ -426,12 +477,12 @@ export class SequencerAudio extends EventTarget {
   releaseTail(session, time) {
     if (this.voices >= MAX_VOICES) return;
     const ac = this.context;
-    const note = TONIC + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
+    const note = this.noteForStep(session.step, session.index, session.octave);
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
     const envelope = ac.createGain();
     const panner = ac.createStereoPanner();
-    oscillator.type = 'triangle'; oscillator.frequency.value = midi(note);
+    oscillator.type = ['triangle', 'sine', 'triangle', 'sine'][this.profile.timbre]; oscillator.frequency.value = midi(note);
     filter.type = 'lowpass'; filter.Q.value = 2.8;
     filter.frequency.setValueAtTime(Math.max(900, session.cutoff), time);
     filter.frequency.exponentialRampToValueAtTime(420, time + 0.9);
@@ -450,7 +501,10 @@ export class SequencerAudio extends EventTarget {
     if (!step || !this.context || !this.master) return;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.18, 0.92);
-    const base = TONIC + SCALE[Math.abs(step.id || index) % SCALE.length];
+    const isCadence = index === this.sequence.length - 1;
+    const base = isCadence
+      ? scaleNote(this.profile.tonic, this.profile.cadence === 1 ? 4 : 0, this.profile.mode)
+      : this.noteForStep(step, index);
     const duration = EIGHTH * clamp(step.interval || 1, 0.55, 2.5);
     const pan = clamp((step.pan ?? 0) * 0.8, -0.85, 0.85);
     const gain = (emphatic ? 0.052 : 0.034) * velocity;
@@ -474,65 +528,79 @@ export class SequencerAudio extends EventTarget {
 
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
-    const sixteenth = stepNumber % 16;
-    const phrase = Math.floor(stepNumber / 64);
-    const barInPhrase = Math.floor(stepNumber / 16) % 4;
-    const chordDegree = CHORD_PROGRESSION[barInPhrase];
-    const phraseNoise = unitNoise(phrase * 31 + this.sequence.length * 7);
+    const profile = this.profile;
+    const cycleStep = stepNumber % profile.meterSteps;
+    const cycleIndex = Math.floor(stepNumber / profile.meterSteps);
+    const progressionIndex = cycleIndex % profile.progression.length;
+    const chordDegree = profile.progression[progressionIndex];
+    const phraseNoise = unitNoise(profile.seed + cycleIndex * 31);
     const sourceStep = this.sequence[stepNumber % this.sequence.length];
     const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
+    const groovePatterns = [
+      [0, Math.floor(profile.meterSteps * 0.58)],
+      Array.from({ length: Math.ceil(profile.meterSteps / 4) }, (_, index) => index * 4),
+      [0, Math.floor(profile.meterSteps * 0.3), Math.floor(profile.meterSteps * 0.68)],
+      [0, 3, Math.floor(profile.meterSteps * 0.5), profile.meterSteps - 2],
+    ];
+    const kicks = [...new Set(groovePatterns[profile.drumStyle].filter((step) => step < profile.meterSteps))];
+    const isKick = kicks.includes(cycleStep);
 
-    // A separate, punchy four-on-the-floor foundation. The music bus is briefly
-    // ducked after each hit, so the low end stays forceful without raising the master.
-    if (sixteenth % 4 === 0) {
-      this.technoKick(time, sixteenth === 0 ? 0.145 : 0.125);
-      this.pump(time, sixteenth === 0 ? 0.31 : 0.37);
+    // Meter and drum weight belong to this landmark; only one profile keeps a
+    // straight four-on-the-floor pattern, while others breathe asymmetrically.
+    if (isKick) {
+      this.technoKick(time, cycleStep === 0 ? 0.138 : 0.112);
+      this.pump(time, cycleStep === 0 ? 0.34 : 0.41);
     }
-    if (sixteenth === 2 || sixteenth === 6 || sixteenth === 10 || sixteenth === 14) {
-      this.sampleHat(time, sixteenth === 14 ? 0.014 : 0.01, (sixteenth - 8) / 14);
+    if ((cycleStep + profile.drumStyle) % 4 === 2) {
+      this.sampleHat(time, cycleStep === profile.meterSteps - 2 ? 0.013 : 0.009, (nextStep?.pan ?? 0) * 0.45);
     }
-    if (sixteenth === 4 || sixteenth === 12) this.sampleClap(time, 0.013, sixteenth === 4 ? -0.18 : 0.18);
-
-    // Syncopated electric-bass-like layer follows the current star geometry.
-    if ([0, 3, 6, 10, 12, 14].includes(sixteenth)) {
-      const bassDegree = sixteenth === 14 ? chordDegree + 4 : chordDegree;
-      const octave = sixteenth === 10 && phraseNoise > 0.72 ? 12 : 0;
-      this.electricBass(scaleNote(TONIC - 12, bassDegree) + octave, time, BEAT * (sixteenth % 4 === 0 ? 0.82 : 0.48), 0.033);
-    }
-
-    // The arpeggio is confined to the active chord. Stars still control stereo
-    // placement and articulation, but can no longer introduce a conflicting key.
-    if (sixteenth % 2 === 1) {
-      const arpPattern = [0, 2, 4, 2, 0, 4, 2, 4];
-      const arpIndex = Math.floor(sixteenth / 2) % arpPattern.length;
-      const arpNote = scaleNote(TONIC + 12, chordDegree + arpPattern[arpIndex]) + (sixteenth >= 12 ? 12 : 0);
-      this.arp(arpNote, time, BEAT * 0.78, 0.019, (nextStep?.pan ?? 0) * 0.55);
+    if (profile.drumStyle % 2 === 1 && cycleStep === Math.floor(profile.meterSteps / 2)) {
+      this.sampleClap(time, 0.011, sourceStep?.pan ?? 0);
     }
 
-    // Each bar voices one chord from i–VI–III–VII; the tonic/fifth drone beneath it
-    // lasts four bars, preserving the requested multi-second atmospheric foundation.
-    if (stepNumber % 16 === 0) {
-      const chord = [0, 2, 4].map((offset) => scaleNote(TONIC, chordDegree + offset));
-      this.pad(chord, time, BEAT * 4.8, 0.0115);
-    }
-    if (stepNumber % 64 === 0) {
-      this.pad([TONIC - 12, TONIC, TONIC + 12], time, FOUR_BARS * 1.18, 0.0065);
+    // Bass follows this generated harmony but inherits its rhythmic gates from the
+    // landmark's meter and stellar path, rather than a universal dance pattern.
+    if (isKick || cycleStep === profile.meterSteps - 1) {
+      const bassDegree = cycleStep === profile.meterSteps - 1 ? chordDegree + 4 : chordDegree;
+      const bassNote = scaleNote(profile.tonic - 12, bassDegree, profile.mode);
+      this.electricBass(bassNote, time, BEAT * (isKick ? 0.74 : 0.42), 0.028 + profile.drumStyle * 0.0015);
     }
 
-    // A repeated, singable phrase uses scale degrees and resolves to the tonic.
-    const motifSteps = [7, 15, 23, 31, 39, 47, 55, 63];
-    const motifDegrees = [4, 2, 5, 2, 2, 4, 6, 0];
-    if (motifSteps.includes(stepNumber % 64)) {
-      const motifIndex = motifSteps.indexOf(stepNumber % 64);
-      const motifStep = this.sequence[(motifIndex * 5 + phrase) % this.sequence.length] || sourceStep;
-      const leadNote = scaleNote(TONIC + 12, motifDegrees[motifIndex]);
-      const phraseEnd = motifIndex === motifSteps.length - 1;
-      this.melodicVoice(leadNote, time, BEAT * (phraseEnd ? 3.4 : 1.65), phraseEnd ? 0.02 : 0.016, motifStep?.pan ?? 0);
+    // Each star chooses a chord member and register. The chord keeps the result
+    // consonant; the star order keeps different landmarks melodically distinct.
+    if ((cycleStep + 1) % profile.arpStride === 0) {
+      const chordOffsets = [0, 2, 4];
+      const starDegree = this.degreeForStep(nextStep, stepNumber);
+      const chordOffset = chordOffsets[starDegree % chordOffsets.length];
+      const octave = Number.isFinite(nextStep?.mag) && nextStep.mag < 2.2 ? 24 : 12;
+      const arpNote = scaleNote(profile.tonic + octave, chordDegree + chordOffset, profile.mode);
+      this.arp(arpNote, time, BEAT * (0.58 + profile.arpStride * 0.08), 0.0145, (nextStep?.pan ?? 0) * 0.6);
     }
 
-    // Sparse deterministic glitches, never fully random and never on every phrase.
-    if ((stepNumber % 32 === 23 || stepNumber % 64 === 47) && phraseNoise > 0.32) {
-      this.sampleGlitch(time, 0.011, phraseNoise > 0.7 ? 0.7 : -0.7, phrase * 97 + stepNumber);
+    // Chord duration follows the landmark's own cycle (3/4, 7/8, 4/4 or 5/4).
+    if (cycleStep === 0) {
+      const chord = [0, 2, 4].map((offset) => scaleNote(profile.tonic, chordDegree + offset, profile.mode));
+      const cycleDuration = profile.meterSteps * BEAT / 4;
+      this.pad(chord, time, cycleDuration * 1.12, 0.0095);
+      if (progressionIndex === 0) {
+        const formDuration = cycleDuration * profile.progression.length;
+        this.pad([profile.tonic - 12, profile.tonic, profile.tonic + 12], time, formDuration * 1.08, 0.0048);
+      }
+    }
+
+    // Two melodic landmarks per cycle are taken directly from the current path.
+    const melodicGates = [Math.floor(profile.meterSteps * 0.42), profile.meterSteps - 1];
+    if (melodicGates.includes(cycleStep)) {
+      const phraseEnd = cycleStep === profile.meterSteps - 1 && progressionIndex === profile.progression.length - 1;
+      const melodicDegree = phraseEnd && profile.cadence !== 2
+        ? (profile.cadence === 1 ? 4 : 0)
+        : this.degreeForStep(sourceStep, cycleIndex);
+      const leadNote = scaleNote(profile.tonic + 12, melodicDegree, profile.mode);
+      this.melodicVoice(leadNote, time, BEAT * (phraseEnd ? 2.8 : 1.35), phraseEnd ? 0.018 : 0.0135, sourceStep?.pan ?? 0);
+    }
+
+    if (cycleStep === profile.meterSteps - 3 && phraseNoise > 0.58) {
+      this.sampleGlitch(time, 0.0085, phraseNoise > 0.76 ? 0.62 : -0.62, profile.seed + cycleIndex * 97);
     }
   }
 
@@ -619,7 +687,13 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.setValueAtTime(0.0001, time);
     envelope.gain.exponentialRampToValueAtTime(gain, time + 0.012);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-    for (const [type, detune, level] of [['sawtooth', -4, 0.38], ['sine', 0, 0.72]]) {
+    const bassStacks = [
+      [['sawtooth', -4, 0.38], ['sine', 0, 0.72]],
+      [['triangle', -7, 0.48], ['sine', 2, 0.66]],
+      [['square', -3, 0.2], ['sine', 0, 0.78]],
+      [['sawtooth', -9, 0.28], ['triangle', 6, 0.62]],
+    ];
+    for (const [type, detune, level] of bassStacks[this.profile.timbre]) {
       const oscillator = this.context.createOscillator();
       const partial = this.context.createGain();
       oscillator.type = type; oscillator.frequency.value = midi(note); oscillator.detune.value = detune;
@@ -645,7 +719,13 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(gain, time + 0.006);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     panner.pan.value = clamp(pan, -0.78, 0.78);
-    [['sawtooth', -7, 0.34], ['triangle', 5, 0.72]].forEach(([type, detune, level]) => {
+    const arpStacks = [
+      [['sawtooth', -7, 0.34], ['triangle', 5, 0.72]],
+      [['square', -5, 0.2], ['sine', 7, 0.76]],
+      [['triangle', -9, 0.48], ['sine', 4, 0.58]],
+      [['sawtooth', -12, 0.24], ['square', 8, 0.3]],
+    ];
+    arpStacks[this.profile.timbre].forEach(([type, detune, level]) => {
       const oscillator = this.context.createOscillator();
       const partial = this.context.createGain();
       oscillator.type = type; oscillator.frequency.value = midi(note); oscillator.detune.value = detune;
@@ -673,7 +753,10 @@ export class SequencerAudio extends EventTarget {
       if (this.voices >= MAX_VOICES) return;
       const oscillator = this.context.createOscillator();
       const partial = this.context.createGain();
-      oscillator.type = index % 2 ? 'triangle' : 'sine';
+      const padTypes = [
+        ['sine', 'triangle'], ['triangle', 'sine'], ['sine', 'sine'], ['triangle', 'sawtooth'],
+      ];
+      oscillator.type = padTypes[this.profile.timbre][index % 2];
       oscillator.frequency.value = midi(note); oscillator.detune.value = (index - 1.5) * 6;
       partial.gain.value = index === 1 ? 0.64 : 0.42;
       oscillator.connect(partial).connect(filter);
@@ -718,7 +801,13 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     panner.pan.setValueAtTime(clamp(pan * 0.55, -0.62, 0.62), time);
     panner.pan.linearRampToValueAtTime(clamp(-pan * 0.4, -0.55, 0.55), time + duration);
-    [['sawtooth', -9, 0.26], ['triangle', 7, 0.74]].forEach(([type, detune, level]) => {
+    const leadStacks = [
+      [['sawtooth', -9, 0.26], ['triangle', 7, 0.74]],
+      [['triangle', -5, 0.52], ['sine', 9, 0.54]],
+      [['square', -7, 0.16], ['sine', 4, 0.78]],
+      [['sawtooth', -12, 0.2], ['triangle', 11, 0.68]],
+    ];
+    leadStacks[this.profile.timbre].forEach(([type, detune, level]) => {
       const oscillator = this.context.createOscillator();
       const partial = this.context.createGain();
       oscillator.type = type; oscillator.frequency.value = midi(note); oscillator.detune.value = detune;
