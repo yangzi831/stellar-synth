@@ -318,7 +318,7 @@ export class SequencerAudio extends EventTarget {
       seed: Math.abs((Number(step.id) || index + 1) * 37 + index * 101),
     };
     this.interactions.set(id, session);
-    this.filteredPluck(step, index, now + 0.006);
+    this.starInstrumentAttack(step, index, now + 0.006);
     session.holdTimer = window.setTimeout(() => this.beginHold(id), HOLD_THRESHOLD_MS);
     this.dispatchEvent(new CustomEvent('gesture', { detail: { phase: 'press', ...this.interactionSnapshot(id) } }));
     return this.interactionSnapshot(id);
@@ -398,32 +398,68 @@ export class SequencerAudio extends EventTarget {
     node.connect(this.reverbSend);
   }
 
-  filteredPluck(step, index, time) {
-    if (this.voices >= MAX_VOICES) return;
-    const ac = this.context;
+  starInstrumentAttack(step, index, time) {
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
-    const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.22, 0.92);
+    const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.25, 0.9);
     const note = this.noteForStep(step, index, 12);
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
-    const oscillator = ac.createOscillator();
-    const filter = ac.createBiquadFilter();
-    const envelope = ac.createGain();
-    const panner = ac.createStereoPanner();
-    oscillator.type = ['sine', 'triangle', 'triangle', 'sine'][this.profile.timbre];
-    oscillator.frequency.setValueAtTime(midi(note + 12), time);
-    oscillator.frequency.exponentialRampToValueAtTime(midi(note), time + 0.035);
-    filter.type = 'lowpass'; filter.Q.value = 5.5;
-    filter.frequency.setValueAtTime(5200 + velocity * 1800, time);
-    filter.frequency.exponentialRampToValueAtTime(680 + velocity * 900, time + 0.12);
+    const instrument = Math.abs((Number(step.id) || index) + index * 3 + this.profile.seed) % 5;
+    if (instrument === 0) this.gestureInstrumentTone(note, time, 0.82, 0.036 * velocity, pan, 'bell');
+    else if (instrument === 1) this.gestureInstrumentTone(note, time, 0.48, 0.044 * velocity, pan, 'keys');
+    else if (instrument === 2) this.gestureInstrumentTone(note, time, 0.38, 0.035 * velocity, pan, 'synth');
+    else if (instrument === 3) this.gestureInstrumentTone(note - 12, time, 0.55, 0.05 * velocity, pan, 'bass');
+    else this.gestureMallet(note, time, 0.04 * velocity, pan, index + this.profile.seed);
+  }
+
+  gestureInstrumentTone(note, time, duration, gain, pan, instrument) {
+    if (this.voices >= MAX_VOICES - 3) return;
+    const voices = {
+      bell: [['sine', 1, 0.72], ['sine', 2.01, 0.25], ['sine', 3.93, 0.09]],
+      keys: [['triangle', 1, 0.68], ['sine', 2, 0.22]],
+      synth: [['sawtooth', 1, 0.26], ['triangle', 1.005, 0.7]],
+      bass: [['sine', 1, 0.82], ['triangle', 2, 0.16]],
+    }[instrument];
+    const filter = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    filter.type = 'lowpass';
+    filter.Q.value = instrument === 'synth' ? 4.2 : 1.25;
+    filter.frequency.setValueAtTime(instrument === 'bass' ? 780 : instrument === 'bell' ? 6800 : 3400, time);
+    if (instrument === 'synth') filter.frequency.exponentialRampToValueAtTime(820, time + duration);
     envelope.gain.setValueAtTime(0.0001, time);
-    envelope.gain.exponentialRampToValueAtTime(0.07 * velocity, time + 0.004);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.125);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + (instrument === 'keys' ? 0.018 : 0.006));
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     panner.pan.value = pan;
-    oscillator.connect(filter).connect(envelope).connect(panner);
+    voices.forEach(([type, ratio, level]) => {
+      const oscillator = this.context.createOscillator();
+      const partial = this.context.createGain();
+      oscillator.type = type;
+      oscillator.frequency.value = midi(note) * ratio;
+      partial.gain.value = level;
+      oscillator.connect(partial).connect(filter);
+      this.register(oscillator);
+      oscillator.start(time); oscillator.stop(time + duration + 0.035);
+    });
+    filter.connect(envelope).connect(panner);
+    this.connectGesture(panner);
+  }
+
+  gestureMallet(note, time, gain, pan, seed) {
+    if (this.voices >= MAX_VOICES - 1) return;
+    const oscillator = this.context.createOscillator();
+    const resonator = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    oscillator.type = 'sine'; oscillator.frequency.value = midi(note);
+    resonator.type = 'bandpass'; resonator.frequency.value = midi(note) * 2; resonator.Q.value = 7.5;
+    envelope.gain.setValueAtTime(gain, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.31);
+    panner.pan.value = pan;
+    oscillator.connect(resonator).connect(envelope).connect(panner);
     this.connectGesture(panner);
     this.register(oscillator);
-    oscillator.start(time); oscillator.stop(time + 0.15);
-    this.gestureNoise(time, 0.11, 0.012 * velocity, 2600 + velocity * 2400, 6, pan, index * 17);
+    oscillator.start(time); oscillator.stop(time + 0.34);
+    this.gestureNoise(time, 0.045, gain * 0.22, midi(note) * 2.4, 11, pan, seed);
   }
 
   gesturePulse(session, time) {
