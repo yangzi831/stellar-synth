@@ -17,6 +17,7 @@
     <div class="shell" id="shell" hidden>
       <header class="brand">
         <button class="brand-button text-button" id="home" aria-label="Return to culture selection">
+          <span class="brand-return">← 返回文化选择 / CULTURES</span>
           <span>Stellar Synth / 星宿频率</span>
           <small>Play the Stars Across Cultures · 150 BPM</small>
         </button>
@@ -42,7 +43,8 @@
         <output id="zoom-level">100%</output>
         <button id="zoom-in" aria-label="放大 / Zoom in">＋</button>
         <button id="focus-landmark">定位星座 FOCUS</button>
-        <button id="reset-view">返回全图 ALL SKY</button>
+        <button id="reset-view">回到整张星图 ALL SKY</button>
+        <button id="back-cultures">返回文明选择 CULTURES</button>
       </div>
 
       <label class="landmark-nav" for="landmark-select">
@@ -58,25 +60,29 @@
       </aside>
 
       <aside class="detail" id="detail" hidden>
-        <button class="close text-button" id="detail-close" aria-label="Close details">×</button>
+        <div class="detail-tools">
+          <button class="collapse text-button" id="detail-collapse" aria-expanded="true">收起介绍 −</button>
+          <button class="close text-button" id="detail-close" aria-label="Close details">关闭 ×</button>
+        </div>
         <div class="eyebrow" id="detail-culture"></div>
         <h1 id="detail-native"></h1>
         <div class="translated" id="detail-translated"></div>
-        <div class="keyboard-note" id="keyboard-note">1–0 · Q–P · A–L · Z–M · ⇧ SECOND BANK</div>
-        <dl>
-          <div><dt>读音 / PRONUNCIATION</dt><dd id="detail-pronunciation">—</dd></div>
-          <div><dt>恒星 / STEPS</dt><dd id="detail-stars">0</dd></div>
-          <div><dt>结构 / STRUCTURE</dt><dd id="detail-kind">连线 / LINE</dd></div>
-        </dl>
-        <p class="story-zh" id="detail-story-zh"></p>
-        <p class="story-en" id="detail-story"></p>
-        <div class="detail-actions">
-          <button id="enter-landmark">定位 / FOCUS</button>
-          <button id="play-landmark">演奏此结构 / PLAY SHAPE</button>
-        </div>
-        <div class="detail-actions secondary-actions">
-          <button id="previous-landmark">← 上一个 / PREV</button>
-          <button id="next-landmark">下一个 / NEXT →</button>
+        <div class="detail-body" id="detail-body">
+          <div class="keyboard-note" id="keyboard-note">1–0 · Q–P · A–L · Z–M · ⇧ SECOND BANK</div>
+          <dl>
+            <div><dt>读音 / PRONUNCIATION</dt><dd id="detail-pronunciation">—</dd></div>
+            <div><dt>恒星 / STEPS</dt><dd id="detail-stars">0</dd></div>
+            <div><dt>结构 / STRUCTURE</dt><dd id="detail-kind">连线 / LINE</dd></div>
+          </dl>
+          <p class="story-zh" id="detail-story-zh"></p>
+          <div class="detail-actions">
+            <button id="enter-landmark">定位 / FOCUS</button>
+            <button id="play-landmark">演奏此结构 / PLAY SHAPE</button>
+          </div>
+          <div class="detail-actions secondary-actions">
+            <button id="previous-landmark">← 上一个 / PREV</button>
+            <button id="next-landmark">下一个 / NEXT →</button>
+          </div>
         </div>
       </aside>
 

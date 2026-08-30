@@ -25,7 +25,7 @@ The reference runtime has one defensive canvas-radius clamp to prevent an interm
 
 ### Audio materials
 
-The D5 runtime and this project generate sound entirely in JavaScript through the Web Audio API. The signal path uses oscillators, procedural noise buffers, biquad filters, stereo panning, gain envelopes and dynamics compression. No WAV, MP3, sample pack, sound font or third-party recording is included.
+The D5 runtime and this project generate sound entirely in JavaScript through the Web Audio API. The signal path uses oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, arpeggios, pads, electronic bass, stereo panning, delay, reverb, gain envelopes and dynamics compression. No WAV, MP3, external sample pack, sound font or third-party recording is included.
 
 ## Stellarium Sky Cultures
 

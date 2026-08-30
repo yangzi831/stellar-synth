@@ -55,6 +55,7 @@ const state = {
   gestureRequests: new Map(),
   gestureVisuals: new Map(),
   autoLoops: 0,
+  detailCollapsed: false,
 };
 
 let width = 0;
@@ -92,6 +93,25 @@ function constellationZh(item) {
 function constellationLabel(item) {
   const zh = constellationZh(item);
   return zh && zh !== item.nativeName ? `${item.nativeName} · ${zh}` : item.nativeName;
+}
+
+function chineseDetailStory(item, current) {
+  const zhName = constellationZh(item) || item.translatedName || item.nativeName;
+  const hasChinese = (value = '') => /[\u3400-\u9fff]/.test(value);
+  const landmarkStory = hasChinese(item.story) ? item.story.trim() : '';
+  const cultureStory = current.introductionZh
+    || '这套天空传统通过恒星位置、名称和结构关系记录时间、方向、季节与文化记忆。';
+  const structure = item.kind === 'dark-region'
+    ? `${zhName}属于银河暗区结构，观看重点是暗带的轮廓与周围恒星的关系`
+    : `${zhName}由 ${item.starCount} 颗恒星构成，连线呈现它在这套天空文化中的内部关系`;
+  return [structure, landmarkStory || cultureStory].filter(Boolean).join('。').replace(/。。+/g, '。');
+}
+
+function setDetailCollapsed(collapsed) {
+  state.detailCollapsed = collapsed;
+  $('#detail').classList.toggle('collapsed', collapsed);
+  $('#detail-collapse').textContent = collapsed ? '展开介绍 +' : '收起介绍 −';
+  $('#detail-collapse').setAttribute('aria-expanded', String(!collapsed));
 }
 
 function keyboardBinding(index) {
@@ -357,8 +377,8 @@ function showDetail(item) {
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
-  $('#detail-story-zh').textContent = current.introductionZh || '此处显示该天空文化中的一个局部结构；恒星位置保持真实，文化关系通过连线和名称呈现。';
-  $('#detail-story').textContent = item.story || current.introduction || current.overview || 'Source data contains geometry and names; no separate short narrative is attached to this landmark.';
+  $('#detail-story-zh').textContent = chineseDetailStory(item, current);
+  setDetailCollapsed(state.detailCollapsed);
   $('#detail').hidden = false;
   $('#landmark-select').value = item.id;
   $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${constellationLabel(item)} · ${item.starCount} 颗星 / STEPS`;
@@ -900,7 +920,7 @@ function showOverlay(type) {
       <h1>CREDITS /<br>SOURCES</h1>
       <p><strong>Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.<br>Original code used and modified under the MIT License.</strong></p>
       <h2>AUDIO</h2>
-      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>, derived from the D5 v12 runtime and v13 patch. It uses Web Audio oscillators, filtered procedural noise, gain envelopes, stereo panning and dynamics compression. No WAV, MP3, sample pack or third-party recording is bundled.</p>
+      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>, derived from the D5 v12 runtime and v13 patch. It uses Web Audio oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, synth arpeggios, pads, bass, gain envelopes, stereo panning, delay, reverb and dynamics compression. No WAV, MP3, sample pack or third-party recording is bundled.</p>
       <h2>ASTRONOMICAL POSITIONS</h2>
       <p>Hipparcos identifiers come from Stellarium sky-culture geometry. J2000-aligned star positions and apparent magnitudes are adapted from the Astronexus HYG Database v4.1 under CC BY-SA 4.0.</p>
       <h2>SKY CULTURES</h2>
@@ -979,6 +999,7 @@ $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#detail-close').addEventListener('click', () => { $('#detail').hidden = true; });
+$('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed));
 $('#enter-landmark').addEventListener('click', () => focusLandmark(state.selected));
 $('#play-landmark').addEventListener('click', async () => {
   if (state.selected) audio.setSequence(sequenceFor(state.selected));
@@ -991,6 +1012,8 @@ $('#zoom-in').addEventListener('click', () => zoomBy(1.25));
 $('#focus-landmark').addEventListener('click', () => focusLandmark(state.selected));
 $('#reset-view').addEventListener('click', () => {
   resetView();
+  if (state.mode !== 'atlas') setMode('atlas');
+  $('#detail').hidden = true;
   $('#status').textContent = '返回整张星图 / RETURNED TO ALL-SKY VIEW';
 });
 $('#landmark-select').addEventListener('change', (event) => {
@@ -999,13 +1022,21 @@ $('#landmark-select').addEventListener('change', (event) => {
   if (state.mode === 'play') { showDetail(item); enterLandmark(item, false); }
   else focusLandmark(item);
 });
-$('#home').addEventListener('click', () => {
+function returnToCultureSelection() {
   audio.stop();
+  closeDrawer();
+  $('#detail').hidden = true;
+  $('#overlay').hidden = true;
+  resetView();
   $('#shell').hidden = true;
   $('#launch').hidden = false;
   state.launchSelected = state.cultureId;
   refreshGrids();
-});
+  $('#status').textContent = '选择天空文化 / SELECT A SKY CULTURE';
+}
+
+$('#home').addEventListener('click', returnToCultureSelection);
+$('#back-cultures').addEventListener('click', returnToCultureSelection);
 $$('[data-overlay]').forEach((button) => button.addEventListener('click', () => showOverlay(button.dataset.overlay)));
 $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = true; });
 
