@@ -1,15 +1,16 @@
 /*
  * Derived from D5 v12 Topological Playground and the D5 v13 Sequencer Map
  * patch by Ewan Qian / 钱誉文. Used and modified under the MIT License.
- * The signal path remains synthesis-only: oscillators, filtered noise,
- * stereo panning, gain envelopes and dynamics compression.
+ * The signal path remains synthesis-only: oscillators, procedurally generated
+ * sample buffers, filtered noise, stereo panning, gain envelopes and dynamics
+ * compression. No third-party recording or sample pack is bundled.
  */
 
 export const BPM = 150;
 const BEAT = 60 / BPM;
 const EIGHTH = BEAT / 2;
 const LOOK_AHEAD = 0.13;
-const MAX_VOICES = 64;
+const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
 const MASTER_GAIN = 0.95;
 const HOLD_THRESHOLD_MS = 350;
@@ -35,10 +36,16 @@ export class SequencerAudio extends EventTarget {
     this.reverbSend = null;
     this.reverb = null;
     this.reverbReturn = null;
+    this.arrangementBus = null;
+    this.delay = null;
+    this.delayFeedback = null;
+    this.delayReturn = null;
     this.running = false;
     this.timer = null;
     this.nextTick = 0;
     this.tick = 0;
+    this.arrangementStep = 0;
+    this.nextArrangementTick = 0;
     this.sequence = [];
     this.active = new Set();
     this.interactions = new Map();
@@ -80,6 +87,18 @@ export class SequencerAudio extends EventTarget {
     this.reverbReturn = ac.createGain();
     this.reverbReturn.gain.value = 0.38;
     this.reverbSend.connect(this.reverb).connect(this.reverbReturn).connect(this.master);
+    this.arrangementBus = ac.createGain();
+    this.arrangementBus.gain.value = 0.62;
+    this.arrangementBus.connect(this.master);
+    this.arrangementBus.connect(this.reverbSend);
+    this.delay = ac.createDelay(1.2);
+    this.delay.delayTime.value = BEAT * 0.75;
+    this.delayFeedback = ac.createGain();
+    this.delayFeedback.gain.value = 0.28;
+    this.delayReturn = ac.createGain();
+    this.delayReturn.gain.value = 0.23;
+    this.delay.connect(this.delayFeedback).connect(this.delay);
+    this.delay.connect(this.delayReturn).connect(this.master);
   }
 
   makeNoise() {
@@ -122,6 +141,8 @@ export class SequencerAudio extends EventTarget {
     this.master.gain.setTargetAtTime(MASTER_GAIN, this.context.currentTime, 0.025);
     this.running = true;
     this.nextTick = this.context.currentTime + 0.04;
+    this.nextArrangementTick = this.nextTick;
+    this.arrangementStep = 0;
     this.timer = window.setInterval(() => this.schedule(), 18);
     this.dispatchEvent(new CustomEvent('state', { detail: { running: true } }));
   }
@@ -156,6 +177,11 @@ export class SequencerAudio extends EventTarget {
 
   schedule() {
     if (!this.running || !this.context) return;
+    while (this.nextArrangementTick < this.context.currentTime + LOOK_AHEAD) {
+      this.scheduleArrangement(this.arrangementStep, this.nextArrangementTick);
+      this.arrangementStep += 1;
+      this.nextArrangementTick += BEAT / 4;
+    }
     while (this.nextTick < this.context.currentTime + LOOK_AHEAD) {
       if (this.sequence.length) {
         const stepIndex = this.tick % this.sequence.length;
@@ -436,6 +462,178 @@ export class SequencerAudio extends EventTarget {
     }
   }
 
+  scheduleArrangement(stepNumber, time) {
+    if (!this.sequence.length || !this.arrangementBus) return;
+    const sixteenth = stepNumber % 16;
+    const phrase = Math.floor(stepNumber / 32);
+    const phraseNoise = unitNoise(phrase * 31 + this.sequence.length * 7);
+    const sourceStep = this.sequence[stepNumber % this.sequence.length];
+    const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
+    const root = 33 + SCALE[Math.abs(sourceStep?.id || stepNumber) % SCALE.length];
+
+    // Restrained four-on-the-floor pulse: quieter than the landmark sequencer.
+    if (sixteenth % 4 === 0) this.kick(time, sixteenth === 0 ? 0.095 : 0.072, this.arrangementBus);
+    if (sixteenth === 2 || sixteenth === 6 || sixteenth === 10 || sixteenth === 14) {
+      this.sampleHat(time, sixteenth === 14 ? 0.014 : 0.01, (sixteenth - 8) / 14);
+    }
+    if (sixteenth === 4 || sixteenth === 12) this.sampleClap(time, 0.013, sixteenth === 4 ? -0.18 : 0.18);
+
+    // Syncopated electric-bass-like layer follows the current star geometry.
+    if ([0, 3, 6, 10, 12, 14].includes(sixteenth)) {
+      const octave = sixteenth === 10 && phraseNoise > 0.58 ? 12 : 0;
+      this.electricBass(root + octave, time, BEAT * (sixteenth % 4 === 0 ? 0.72 : 0.42), 0.028);
+    }
+
+    // A restrained melodic-techno arpeggio; star IDs choose notes, not culture stereotypes.
+    if (sixteenth % 2 === 1) {
+      const arpNote = 57 + SCALE[Math.abs(nextStep?.id || stepNumber) % SCALE.length] + (sixteenth >= 8 ? 12 : 0);
+      this.arp(arpNote, time, BEAT * 0.34, 0.012, (nextStep?.pan ?? 0) * 0.55);
+    }
+
+    // Two-bar pad changes slowly; bounded phrase variation keeps the texture coherent.
+    if (stepNumber % 32 === 0) {
+      const padRoot = 45 + SCALE[Math.abs(sourceStep?.id || phrase) % 5];
+      this.pad([padRoot, padRoot + 7, padRoot + 14], time, TWO_BARS * 0.94, 0.0075);
+    }
+
+    // Sparse deterministic glitches, never fully random and never on every phrase.
+    if ((stepNumber % 32 === 23 || stepNumber % 64 === 47) && phraseNoise > 0.32) {
+      this.sampleGlitch(time, 0.011, phraseNoise > 0.7 ? 0.7 : -0.7, phrase * 97 + stepNumber);
+    }
+  }
+
+  connectArrangement(node, delayAmount = 0) {
+    node.connect(this.arrangementBus);
+    if (delayAmount > 0 && this.delay) {
+      const send = this.context.createGain();
+      send.gain.value = delayAmount;
+      node.connect(send).connect(this.delay);
+    }
+  }
+
+  sampleHat(time, gain = 0.012, pan = 0) {
+    if (this.voices >= MAX_VOICES) return;
+    const source = this.context.createBufferSource();
+    const highpass = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    source.buffer = this.noiseBuffer;
+    highpass.type = 'highpass'; highpass.frequency.value = 6200; highpass.Q.value = 0.7;
+    envelope.gain.setValueAtTime(gain, time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+    panner.pan.value = clamp(pan, -0.75, 0.75);
+    source.connect(highpass).connect(envelope).connect(panner);
+    this.connectArrangement(panner, 0.04);
+    this.register(source);
+    source.start(time, unitNoise(time * 37) * 2.6, 0.055); source.stop(time + 0.06);
+  }
+
+  sampleClap(time, gain = 0.014, pan = 0) {
+    for (let hit = 0; hit < 3; hit += 1) {
+      const when = time + hit * 0.012;
+      const source = this.context.createBufferSource();
+      const band = this.context.createBiquadFilter();
+      const envelope = this.context.createGain();
+      const panner = this.context.createStereoPanner();
+      source.buffer = this.noiseBuffer;
+      band.type = 'bandpass'; band.frequency.value = 1550 + hit * 420; band.Q.value = 0.9;
+      envelope.gain.setValueAtTime(gain * (1 - hit * 0.22), when);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, when + 0.075 + hit * 0.018);
+      panner.pan.value = clamp(pan + (hit - 1) * 0.08, -0.8, 0.8);
+      source.connect(band).connect(envelope).connect(panner);
+      this.connectArrangement(panner, 0.16);
+      this.register(source);
+      source.start(when, unitNoise(when * 71 + hit) * 2.7, 0.13); source.stop(when + 0.14);
+    }
+  }
+
+  sampleGlitch(time, gain, pan, seed) {
+    for (let slice = 0; slice < 4; slice += 1) {
+      const source = this.context.createBufferSource();
+      const band = this.context.createBiquadFilter();
+      const envelope = this.context.createGain();
+      const panner = this.context.createStereoPanner();
+      const spread = unitNoise(seed + slice * 11);
+      const when = time + slice * (BEAT / 16);
+      source.buffer = this.noiseBuffer;
+      source.playbackRate.value = 0.7 + spread * 1.9;
+      band.type = 'bandpass'; band.frequency.value = 900 + spread * 6200; band.Q.value = 8 + spread * 9;
+      envelope.gain.setValueAtTime(Math.max(0.0002, gain * (1 - slice * 0.16)), when);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, when + 0.028 + spread * 0.018);
+      panner.pan.value = clamp(pan * (slice % 2 ? -1 : 1), -0.85, 0.85);
+      source.connect(band).connect(envelope).connect(panner);
+      this.connectArrangement(panner, 0.24);
+      this.register(source);
+      source.start(when, spread * 2.7, 0.06); source.stop(when + 0.065);
+    }
+  }
+
+  electricBass(note, time, duration, gain) {
+    if (this.voices >= MAX_VOICES - 1) return;
+    const filter = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    filter.type = 'lowpass'; filter.Q.value = 4.2;
+    filter.frequency.setValueAtTime(760, time);
+    filter.frequency.exponentialRampToValueAtTime(180, time + duration);
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + 0.012);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    for (const [type, detune, level] of [['sawtooth', -4, 0.38], ['sine', 0, 0.72]]) {
+      const oscillator = this.context.createOscillator();
+      const partial = this.context.createGain();
+      oscillator.type = type; oscillator.frequency.value = midi(note); oscillator.detune.value = detune;
+      partial.gain.value = level;
+      oscillator.connect(partial).connect(filter);
+      this.register(oscillator);
+      oscillator.start(time); oscillator.stop(time + duration + 0.04);
+    }
+    filter.connect(envelope);
+    this.connectArrangement(envelope);
+  }
+
+  arp(note, time, duration, gain, pan) {
+    if (this.voices >= MAX_VOICES) return;
+    const oscillator = this.context.createOscillator();
+    const filter = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    oscillator.type = 'square'; oscillator.frequency.value = midi(note);
+    filter.type = 'bandpass'; filter.frequency.value = 1500 + (note % 12) * 130; filter.Q.value = 2.6;
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + 0.006);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    panner.pan.value = clamp(pan, -0.78, 0.78);
+    oscillator.connect(filter).connect(envelope).connect(panner);
+    this.connectArrangement(panner, 0.38);
+    this.register(oscillator);
+    oscillator.start(time); oscillator.stop(time + duration + 0.025);
+  }
+
+  pad(notes, time, duration, gain) {
+    const filter = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    filter.type = 'lowpass'; filter.Q.value = 0.8;
+    filter.frequency.setValueAtTime(520, time);
+    filter.frequency.exponentialRampToValueAtTime(1500, time + duration * 0.45);
+    filter.frequency.exponentialRampToValueAtTime(380, time + duration);
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + BEAT * 1.5);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    notes.forEach((note, index) => {
+      if (this.voices >= MAX_VOICES) return;
+      const oscillator = this.context.createOscillator();
+      const partial = this.context.createGain();
+      oscillator.type = index === 1 ? 'triangle' : 'sine';
+      oscillator.frequency.value = midi(note); oscillator.detune.value = (index - 1) * 5;
+      partial.gain.value = index === 1 ? 0.65 : 0.46;
+      oscillator.connect(partial).connect(filter);
+      this.register(oscillator);
+      oscillator.start(time); oscillator.stop(time + duration + 0.08);
+    });
+    filter.connect(envelope);
+    this.connectArrangement(envelope, 0.12);
+  }
+
   register(source) {
     this.active.add(source);
     this.voices += 1;
@@ -501,7 +699,7 @@ export class SequencerAudio extends EventTarget {
     source.start(time); source.stop(time + duration + 0.03);
   }
 
-  kick(time, gain = 0.08) {
+  kick(time, gain = 0.08, destination = this.master) {
     if (this.voices >= MAX_VOICES) return;
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
@@ -509,7 +707,7 @@ export class SequencerAudio extends EventTarget {
     oscillator.frequency.exponentialRampToValueAtTime(43, time + 0.11);
     envelope.gain.setValueAtTime(gain, time);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
-    oscillator.connect(envelope).connect(this.master);
+    oscillator.connect(envelope).connect(destination);
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.18);
   }
