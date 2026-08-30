@@ -18,6 +18,7 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 
 - A local copy of the D5 v13 baseline, including the v12 runtime and v13 map patch.
 - ATLAS, PLAY and COMPARE modes.
+- COMPARE continuously alternates between the two selected cultures: each side completes a readable musical segment before fixed stars retain their positions, old relations dissolve, and the other culture's matched landmark, lines, labels and sound path take over.
 - Chinese/English interface labels, bilingual culture introductions and local Chinese display names for all 572 loaded constellations/asterisms.
 - One-click culture entry from the launch screen.
 - Direct constellation focus, persistent zoom controls, all-sky reset, previous/next navigation and an overview locator.

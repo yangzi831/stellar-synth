@@ -51,6 +51,9 @@ for (const method of ['starInstrumentAttack', 'gestureInstrumentTone', 'gestureM
 for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConnection']) {
   assert(app.includes(`${visual}(`), `Missing gesture visual stage: ${visual}`);
 }
+for (const compareStage of ['matchingCompareLandmark', 'switchCompareCulture', 'queueCompareSwitch', 'updateCompareCopy']) {
+  assert(app.includes(`${compareStage}(`), `Missing alternating compare stage: ${compareStage}`);
+}
 assert(app.includes('audio.interactionSnapshot(id)'), 'Audio and visuals must share interaction state.');
 assert(app.includes("fetch('../data/sky-cultures.json')"), 'Sky-culture data must use a GitHub Pages-compatible relative path.');
 assert(publicIndex.includes('./atlas/'), 'Static root must enter the standalone atlas.');
