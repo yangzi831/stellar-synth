@@ -24,7 +24,7 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 - Brighter culture-specific star points rendered above constellation lines.
 - Computer-keyboard performance for up to 72 landmark stars: `1–0`, `Q–P`, `A–L`, `Z–M`, with `Shift` opening the second key bank.
 - A shared audio/visual gesture state: press creates a filtered pluck and liquid ripple, hold adds beat-synchronous pulse and bounded granular texture, and release leaves a 2.8-second filter/reverb and topology tail.
-- 150 BPM Web Audio engine derived from D5, now layering the original plucks with multi-bar ambient pads, looping dual-oscillator melodic-techno arpeggios, deterministic melodic motifs, electronic bass, a punchier three-layer four-on-the-floor kick, pumping dynamics and glitch textures. Percussion and glitch one-shots are procedurally generated sample buffers; no external sample pack or recording is bundled.
+- 150 BPM Web Audio engine derived from D5, now layering the original plucks with multi-bar ambient pads, looping dual-oscillator melodic-techno arpeggios, deterministic melodic motifs, electronic bass, a punchier three-layer four-on-the-floor kick, pumping dynamics and glitch textures. Every pitched voice shares one A natural-minor tonal system; the arrangement follows a four-bar `Am → F → C → G` progression and resolves its melody to the tonic. Percussion and glitch one-shots are procedurally generated sample buffers; no external sample pack or recording is bundled.
 - True stellar positions and apparent magnitudes for 3,719 HIP stars.
 - A build-time adapter for Stellarium `index.json` and `description.md` data.
 - Dynamic culture menus grouped by region.

@@ -16,7 +16,16 @@ const MASTER_GAIN = 0.95;
 const HOLD_THRESHOLD_MS = 350;
 const TWO_BARS = BEAT * 8;
 const FOUR_BARS = BEAT * 16;
-const SCALE = [0, 2, 3, 7, 9, 12, 14, 15, 19, 21];
+const TONIC = 45; // A: one tonal centre for gestures, sequencer and arrangement.
+const MODE = [0, 2, 3, 5, 7, 8, 10]; // A natural minor / Aeolian.
+const SCALE = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19, 20, 22];
+const CHORD_PROGRESSION = [0, 5, 2, 6]; // i – VI – III – VII.
+
+const scaleNote = (tonic, degree) => {
+  const octave = Math.floor(degree / MODE.length);
+  const index = ((degree % MODE.length) + MODE.length) % MODE.length;
+  return tonic + MODE[index] + octave * 12;
+};
 
 const midi = (note) => 440 * 2 ** ((note - 69) / 12);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -343,7 +352,7 @@ export class SequencerAudio extends EventTarget {
     const ac = this.context;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.22, 0.92);
-    const note = 48 + SCALE[Math.abs(step.id || index) % SCALE.length];
+    const note = TONIC + 12 + SCALE[Math.abs(step.id || index) % SCALE.length];
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
@@ -369,7 +378,7 @@ export class SequencerAudio extends EventTarget {
   gesturePulse(session, time) {
     if (this.voices >= MAX_VOICES) return;
     const ac = this.context;
-    const note = 40 + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
+    const note = TONIC + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
     const envelope = ac.createGain();
@@ -417,7 +426,7 @@ export class SequencerAudio extends EventTarget {
   releaseTail(session, time) {
     if (this.voices >= MAX_VOICES) return;
     const ac = this.context;
-    const note = 45 + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
+    const note = TONIC + SCALE[Math.abs(session.step.id || session.index) % SCALE.length] + session.octave;
     const oscillator = ac.createOscillator();
     const filter = ac.createBiquadFilter();
     const envelope = ac.createGain();
@@ -441,7 +450,7 @@ export class SequencerAudio extends EventTarget {
     if (!step || !this.context || !this.master) return;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.18, 0.92);
-    const base = 45 + SCALE[Math.abs(step.id || index) % SCALE.length];
+    const base = TONIC + SCALE[Math.abs(step.id || index) % SCALE.length];
     const duration = EIGHTH * clamp(step.interval || 1, 0.55, 2.5);
     const pan = clamp((step.pan ?? 0) * 0.8, -0.85, 0.85);
     const gain = (emphatic ? 0.052 : 0.034) * velocity;
@@ -466,11 +475,12 @@ export class SequencerAudio extends EventTarget {
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
     const sixteenth = stepNumber % 16;
-    const phrase = Math.floor(stepNumber / 32);
+    const phrase = Math.floor(stepNumber / 64);
+    const barInPhrase = Math.floor(stepNumber / 16) % 4;
+    const chordDegree = CHORD_PROGRESSION[barInPhrase];
     const phraseNoise = unitNoise(phrase * 31 + this.sequence.length * 7);
     const sourceStep = this.sequence[stepNumber % this.sequence.length];
     const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
-    const root = 33 + SCALE[Math.abs(sourceStep?.id || stepNumber) % SCALE.length];
 
     // A separate, punchy four-on-the-floor foundation. The music bus is briefly
     // ducked after each hit, so the low end stays forceful without raising the master.
@@ -485,30 +495,39 @@ export class SequencerAudio extends EventTarget {
 
     // Syncopated electric-bass-like layer follows the current star geometry.
     if ([0, 3, 6, 10, 12, 14].includes(sixteenth)) {
-      const octave = sixteenth === 10 && phraseNoise > 0.58 ? 12 : 0;
-      this.electricBass(root + octave, time, BEAT * (sixteenth % 4 === 0 ? 0.82 : 0.48), 0.033);
+      const bassDegree = sixteenth === 14 ? chordDegree + 4 : chordDegree;
+      const octave = sixteenth === 10 && phraseNoise > 0.72 ? 12 : 0;
+      this.electricBass(scaleNote(TONIC - 12, bassDegree) + octave, time, BEAT * (sixteenth % 4 === 0 ? 0.82 : 0.48), 0.033);
     }
 
-    // A restrained melodic-techno arpeggio; star IDs choose notes, not culture stereotypes.
+    // The arpeggio is confined to the active chord. Stars still control stereo
+    // placement and articulation, but can no longer introduce a conflicting key.
     if (sixteenth % 2 === 1) {
-      const arpNote = 57 + SCALE[Math.abs(nextStep?.id || stepNumber) % SCALE.length] + (sixteenth >= 8 ? 12 : 0);
+      const arpPattern = [0, 2, 4, 2, 0, 4, 2, 4];
+      const arpIndex = Math.floor(sixteenth / 2) % arpPattern.length;
+      const arpNote = scaleNote(TONIC + 12, chordDegree + arpPattern[arpIndex]) + (sixteenth >= 12 ? 12 : 0);
       this.arp(arpNote, time, BEAT * 0.78, 0.019, (nextStep?.pan ?? 0) * 0.55);
     }
 
-    // Four-bar overlapping bed: it remains audible for several seconds and changes
-    // harmony only at phrase boundaries, instead of behaving like another short hit.
+    // Each bar voices one chord from i–VI–III–VII; the tonic/fifth drone beneath it
+    // lasts four bars, preserving the requested multi-second atmospheric foundation.
+    if (stepNumber % 16 === 0) {
+      const chord = [0, 2, 4].map((offset) => scaleNote(TONIC, chordDegree + offset));
+      this.pad(chord, time, BEAT * 4.8, 0.0115);
+    }
     if (stepNumber % 64 === 0) {
-      const padRoot = 40 + SCALE[Math.abs(sourceStep?.id || phrase) % 5];
-      this.pad([padRoot, padRoot + 7, padRoot + 12, padRoot + 19], time, FOUR_BARS * 1.18, 0.016);
+      this.pad([TONIC - 12, TONIC, TONIC + 12], time, FOUR_BARS * 1.18, 0.0065);
     }
 
-    // A deterministic call-and-response motif adds melody while still deriving its
-    // pitch and stereo position from the selected constellation's stars.
-    if ([7, 15, 27, 31, 43, 51, 59].includes(stepNumber % 64)) {
-      const motifIndex = [7, 15, 27, 31, 43, 51, 59].indexOf(stepNumber % 64);
+    // A repeated, singable phrase uses scale degrees and resolves to the tonic.
+    const motifSteps = [7, 15, 23, 31, 39, 47, 55, 63];
+    const motifDegrees = [4, 2, 5, 2, 2, 4, 6, 0];
+    if (motifSteps.includes(stepNumber % 64)) {
+      const motifIndex = motifSteps.indexOf(stepNumber % 64);
       const motifStep = this.sequence[(motifIndex * 5 + phrase) % this.sequence.length] || sourceStep;
-      const leadNote = 62 + SCALE[Math.abs(motifStep?.id || motifIndex) % 7] + (motifIndex === 3 ? 12 : 0);
-      this.melodicVoice(leadNote, time, BEAT * (motifIndex === 3 ? 3.2 : 1.75), 0.017, motifStep?.pan ?? 0);
+      const leadNote = scaleNote(TONIC + 12, motifDegrees[motifIndex]);
+      const phraseEnd = motifIndex === motifSteps.length - 1;
+      this.melodicVoice(leadNote, time, BEAT * (phraseEnd ? 3.4 : 1.65), phraseEnd ? 0.02 : 0.016, motifStep?.pan ?? 0);
     }
 
     // Sparse deterministic glitches, never fully random and never on every phrase.
@@ -647,7 +666,7 @@ export class SequencerAudio extends EventTarget {
     filter.frequency.exponentialRampToValueAtTime(1850, time + duration * 0.48);
     filter.frequency.exponentialRampToValueAtTime(310, time + duration);
     envelope.gain.setValueAtTime(0.0001, time);
-    envelope.gain.exponentialRampToValueAtTime(gain, time + BEAT * 2.6);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + Math.min(BEAT * 2.6, duration * 0.32));
     envelope.gain.setValueAtTime(gain * 0.88, time + duration * 0.66);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     notes.forEach((note, index) => {
