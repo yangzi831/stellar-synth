@@ -45,7 +45,7 @@ assert(audio.includes('createOscillator'), 'Synthesis oscillator path is missing
 assert(audio.includes('const HOLD_THRESHOLD_MS = 350'), 'The 350ms hold threshold is missing.');
 assert(audio.includes('const TWO_BARS = BEAT * 8'), 'Two-bar parameter cadence is missing.');
 assert(audio.includes('createConvolver'), 'Synthetic reverb tail is missing.');
-for (const method of ['filteredPluck', 'gesturePulse', 'gestureGrain', 'releaseTail', 'clockSnapshot']) {
+for (const method of ['starInstrumentAttack', 'gestureInstrumentTone', 'gestureMallet', 'gesturePulse', 'gestureGrain', 'releaseTail', 'clockSnapshot']) {
   assert(audio.includes(`${method}(`), `Missing gesture audio stage: ${method}`);
 }
 for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConnection']) {
