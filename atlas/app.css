@@ -104,9 +104,11 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 
 .launch { position: absolute; inset: 0; z-index: 8; display: grid; grid-template-columns: minmax(360px, .86fr) 1.14fr; background: rgba(2,2,2,.96); }
 .launch-title { display: flex; flex-direction: column; justify-content: center; padding: clamp(30px, 7vw, 110px); border-right: 1px solid #1e1e1e; }
-.launch-title .kicker { margin-bottom: 20px; font-size: 10px; letter-spacing: .2em; color: #555; }
-.launch-title h1 { margin: 0; color: #d7d7d7; font-size: clamp(44px, 6.2vw, 100px); font-weight: 400; line-height: .9; letter-spacing: -.07em; }
-.launch-title p { margin: 26px 0 0; font-size: 9px; letter-spacing: .18em; color: #555; }
+.launch-title h1 { margin: 0; color: #d7d7d7; font-size: clamp(42px, 4vw, 76px); font-weight: 400; line-height: .94; letter-spacing: -.055em; text-transform: none; white-space: nowrap; }
+.launch-title h2 { margin: 18px 0 0; color: #a9a9a9; font-size: clamp(24px, 2.7vw, 42px); font-weight: 400; line-height: 1.08; letter-spacing: .08em; text-transform: none; white-space: nowrap; }
+.launch-title p { margin: 0; color: #555; font-weight: 400; text-transform: none; }
+.launch-title .subtitle-en { margin-top: 30px; font-size: clamp(10px, .92vw, 14px); line-height: 1.4; letter-spacing: .1em; white-space: nowrap; }
+.launch-title .subtitle-zh { margin-top: 9px; font-size: clamp(10px, .82vw, 13px); line-height: 1.5; letter-spacing: .13em; color: #4b4b4b; white-space: nowrap; }
 .launch-select { display: flex; flex-direction: column; justify-content: center; padding: clamp(30px, 6vw, 90px); overflow: auto; }
 .select-label { margin-bottom: 22px; font-size: 9px; letter-spacing: .18em; color: #777; }
 .launch .culture-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 16px 24px; }
@@ -137,8 +139,10 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .culture-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
   .launch { grid-template-columns: 1fr; grid-template-rows: .68fr 1.32fr; }
   .launch-title { padding: 34px; border-right: 0; border-bottom: 1px solid #1e1e1e; }
-  .launch-title h1 { font-size: clamp(40px, 12vw, 74px); }
-  .launch-title p, .launch-title .kicker { margin-top: 10px; margin-bottom: 8px; }
+  .launch-title h1 { font-size: clamp(36px, 10vw, 66px); }
+  .launch-title h2 { margin-top: 11px; font-size: clamp(22px, 5.5vw, 34px); }
+  .launch-title .subtitle-en { margin-top: 18px; font-size: clamp(9px, 2.1vw, 12px); }
+  .launch-title .subtitle-zh { margin-top: 6px; font-size: clamp(9px, 2vw, 11px); }
   .launch-select { justify-content: flex-start; padding: 28px 34px 90px; }
   .launch-foot { left: 34px; right: 34px; }
 }
@@ -167,6 +171,10 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .launch .culture-option span { font-size: 12px; }
   .compare-panel { top: 94px; left: 10px; }
   .launch-title { padding: 24px; }
+  .launch-title h1 { font-size: clamp(32px, 10vw, 48px); }
+  .launch-title h2 { font-size: clamp(20px, 6vw, 28px); }
+  .launch-title .subtitle-en { font-size: clamp(8px, 2.4vw, 10px); letter-spacing: .065em; }
+  .launch-title .subtitle-zh { font-size: clamp(8px, 2.35vw, 10px); letter-spacing: .09em; }
   .launch-select { padding: 22px 24px 88px; }
   .launch-foot { left: 24px; right: 24px; gap: 12px; }
   .launch-foot span { display: none; }
