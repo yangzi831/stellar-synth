@@ -55,6 +55,10 @@ const state = {
   gestureRequests: new Map(),
   gestureVisuals: new Map(),
   autoLoops: 0,
+  compareLoops: 0,
+  compareStartedAt: 0,
+  compareSwitching: false,
+  compareTimer: null,
   detailCollapsed: false,
 };
 
@@ -313,7 +317,9 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
   if (!state.cultures.has(id)) return;
   state.transition = { from: fromId, to: id, started: performance.now(), duration: 1500 };
   state.visibleCultureId = id;
-  state.visibleStarIds = new Set(culture(id).stars);
+  state.visibleStarIds = state.mode === 'compare'
+    ? new Set([...culture(state.cultureId).stars, ...culture(state.compareId).stars])
+    : new Set(culture(id).stars);
   state.selected = null;
   state.activeStep = -1;
   audio.releaseAll(false);
@@ -322,10 +328,66 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
   const item = culture(id);
   $('#culture-region').textContent = item.regionLabel || item.regionGroup;
   $('#culture-name').textContent = state.mode === 'compare'
-    ? `${culture(state.cultureId).localizedName?.zh || culture(state.cultureId).nativeName} ↔ ${item.localizedName?.zh || item.nativeName}`
+    ? `${cultureDisplayName(state.cultureId)} ↔ ${cultureDisplayName(state.compareId)} · [${cultureDisplayName(id)}]`
     : `${item.localizedName?.zh || item.nativeName} / ${(item.localizedName?.en || item.nativeName).toUpperCase()}`;
   $('#status').textContent = `${state.mode.toUpperCase()} · ${item.constellations.length} 个星座 / LANDMARKS · 点击进入 / CLICK TO ENTER`;
   populateLandmarkSelect();
+}
+
+function cultureDisplayName(id) {
+  const item = culture(id);
+  return item?.localizedName?.zh || item?.nativeName || id;
+}
+
+function updateCompareCopy(activeId = state.visibleCultureId) {
+  const primary = cultureDisplayName(state.cultureId);
+  const secondary = cultureDisplayName(state.compareId);
+  const active = cultureDisplayName(activeId);
+  $('#compare-copy').textContent = `${primary} ↔ ${secondary} · 正在呈现 / NOW: ${active}`;
+}
+
+function matchingCompareLandmark(targetCultureId, sourceItem = state.selected) {
+  const candidates = culture(targetCultureId).constellations.filter((item) => item.starCount > 0);
+  if (!candidates.length) return null;
+  if (!sourceItem?.stars?.length) return candidates.find((item) => item.starCount >= 3) || candidates[0];
+  const sourceStars = new Set(sourceItem.stars);
+  const sourceCenter = centroid(sourceItem);
+  return candidates
+    .map((item) => {
+      const overlap = item.stars.reduce((count, id) => count + Number(sourceStars.has(id)), 0);
+      const targetCenter = centroid(item);
+      const spatialDistance = sourceCenter && targetCenter
+        ? Math.hypot(wrapHours(targetCenter.ra - sourceCenter.ra) * 12, targetCenter.dec - sourceCenter.dec)
+        : 180;
+      return { item, score: overlap * 1000 - spatialDistance };
+    })
+    .sort((a, b) => b.score - a.score)[0].item;
+}
+
+function switchCompareCulture() {
+  if (state.mode !== 'compare' || state.compareSwitching) return;
+  state.compareSwitching = true;
+  const previousId = state.visibleCultureId;
+  const targetId = previousId === state.cultureId ? state.compareId : state.cultureId;
+  const previousLandmark = state.selected;
+  const nextLandmark = matchingCompareLandmark(targetId, previousLandmark);
+  setVisibleCulture(targetId, previousId);
+  if (nextLandmark) showDetail(nextLandmark);
+  updateCompareCopy(targetId);
+  state.compareLoops = 0;
+  state.compareStartedAt = performance.now();
+  $('#status').textContent = `比较交替 / COMPARE · ${cultureDisplayName(previousId)} → ${cultureDisplayName(targetId)}`;
+  state.compareSwitching = false;
+}
+
+function queueCompareSwitch() {
+  if (state.compareTimer || state.compareSwitching) return;
+  state.compareSwitching = true;
+  state.compareTimer = window.setTimeout(() => {
+    state.compareTimer = null;
+    state.compareSwitching = false;
+    switchCompareCulture();
+  }, 120);
 }
 
 function setCulture(id) {
@@ -341,11 +403,15 @@ function setCulture(id) {
 
 function setCompareCulture(id) {
   const previous = state.visibleCultureId;
+  if (id === state.cultureId) return;
+  const previousLandmark = state.selected;
   state.compareId = id;
   setVisibleCulture(id, previous);
-  const primary = culture(state.cultureId);
-  const secondary = culture(id);
-  $('#compare-copy').textContent = `${primary.nativeName.toUpperCase()} → ${secondary.nativeName.toUpperCase()}`;
+  const nextLandmark = matchingCompareLandmark(id, previousLandmark);
+  if (nextLandmark) showDetail(nextLandmark);
+  state.compareLoops = 0;
+  state.compareStartedAt = performance.now();
+  updateCompareCopy(id);
   refreshGrids();
 }
 
@@ -353,10 +419,21 @@ function setMode(mode) {
   const previous = state.visibleCultureId;
   const previousSelected = state.selected;
   state.mode = mode;
+  if (mode !== 'compare') {
+    if (state.compareTimer) window.clearTimeout(state.compareTimer);
+    state.compareTimer = null;
+    state.compareSwitching = false;
+    state.compareLoops = 0;
+  }
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
   $('#compare-panel').hidden = mode !== 'compare';
   if (mode === 'compare') {
-    $('#compare-copy').textContent = `${culture(state.cultureId).nativeName.toUpperCase()} → ${culture(state.compareId).nativeName.toUpperCase()}`;
+    state.auto = false;
+    state.autoLoops = 0;
+    $('#auto').classList.remove('on');
+    $('#auto').textContent = '自动路径 AUTO ROUTE';
+    state.compareStartedAt = performance.now();
+    updateCompareCopy(state.compareId);
   }
   $('#legend').innerHTML = mode === 'play'
     ? 'PRESS → LIQUID NODE · HOLD → PULSE / TOPOLOGY · RELEASE → 2.8s TAIL<br />ENTER → INSIDE → EXIT → CORRIDOR → NEXT NODE'
@@ -364,6 +441,10 @@ function setMode(mode) {
       ? '恒星位置保持不动 · 文化关系重新形成<br />STARS REMAIN FIXED · RELATIONS REFORM'
       : '拖动 = 移动 · 滚轮 / 双指 = 缩放 · 点击 = 进入星座<br />DRAG = PAN · WHEEL / PINCH = ZOOM · CLICK = ENTER';
   setVisibleCulture(mode === 'compare' ? state.compareId : state.cultureId, previous);
+  if (mode === 'compare') {
+    const compareLandmark = matchingCompareLandmark(state.compareId, previousSelected);
+    if (compareLandmark) showDetail(compareLandmark);
+  }
   if (mode === 'play' && previousSelected) {
     showDetail(previousSelected);
     enterLandmark(previousSelected, false);
@@ -951,6 +1032,12 @@ audio.addEventListener('state', (event) => {
 
 audio.addEventListener('step', (event) => {
   state.activeStep = event.detail.index;
+  if (state.mode === 'compare' && event.detail.index === 0 && event.detail.tick > 0) {
+    state.compareLoops += 1;
+    const elapsed = performance.now() - state.compareStartedAt;
+    if (elapsed >= 4200) queueCompareSwitch();
+    return;
+  }
   if (state.auto && event.detail.index === 0 && event.detail.tick > 0) {
     state.autoLoops += 1;
     if (state.autoLoops >= 2) { state.autoLoops = 0; nextAutoLandmark(); }
@@ -972,6 +1059,11 @@ $('#play').addEventListener('click', async () => {
     if (first) { showDetail(first); setAudioLandmark(first); }
   }
   const running = await audio.toggle();
+  if (running && state.mode === 'compare') {
+    state.compareLoops = 0;
+    state.compareStartedAt = performance.now();
+    updateCompareCopy();
+  }
   $('#status').textContent = running ? `演奏中 / PLAYING · ${BPM} BPM · ${state.selected?.nativeName?.toUpperCase() || 'ATLAS'}` : '已停止 / STOPPED';
 });
 
@@ -994,6 +1086,8 @@ $('#guide').addEventListener('click', () => {
 });
 $('#panic').addEventListener('click', () => {
   state.auto = false; state.autoLoops = 0; state.activeStep = -1;
+  if (state.compareTimer) window.clearTimeout(state.compareTimer);
+  state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
   state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
@@ -1036,6 +1130,8 @@ $('#landmark-select').addEventListener('change', (event) => {
 });
 function returnToCultureSelection() {
   audio.stop();
+  if (state.compareTimer) window.clearTimeout(state.compareTimer);
+  state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   closeDrawer();
   $('#detail').hidden = true;
   $('#overlay').hidden = true;
