@@ -37,6 +37,9 @@ for (const label of ['ATLAS', 'PLAY', 'COMPARE', 'AUTO ROUTE', 'FULLSCREEN', 'PA
 for (const control of ['zoom-in', 'zoom-out', 'reset-view', 'landmark-select', 'overview']) {
   assert(html.includes(`id="${control}"`), `Missing navigation control: ${control}`);
 }
+for (const arrangement of ['path', 'group', 'fragment']) {
+  assert(html.includes(`data-arrangement="${arrangement}"`), `Missing arrangement mode: ${arrangement}`);
+}
 assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 BPM.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
@@ -48,6 +51,16 @@ assert(audio.includes('createConvolver'), 'Synthetic reverb tail is missing.');
 for (const method of ['starInstrumentAttack', 'gestureInstrumentTone', 'gestureMallet', 'gesturePulse', 'gestureGrain', 'releaseTail', 'clockSnapshot']) {
   assert(audio.includes(`${method}(`), `Missing gesture audio stage: ${method}`);
 }
+for (const method of ['triggerStarEvent', 'selectEventVoices', 'profileChord']) {
+  assert(audio.includes(`${method}(`), `Missing grouped event audio stage: ${method}`);
+}
+for (const cultureId of ['chinese', 'western', 'indian', 'northern_andes']) {
+  assert(audio.includes(`${cultureId}: {`), `Missing CultureMusicProfile: ${cultureId}`);
+}
+for (const stage of ['buildStarEvents', 'topologyGroups', 'drawStarEventVisuals', 'setArrangementMode']) {
+  assert(app.includes(`${stage}(`), `Missing grouped composition stage: ${stage}`);
+}
+assert(audio.includes("new CustomEvent('star-event'"), 'Audio and visual grouped events must share StarEvent timing.');
 for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConnection']) {
   assert(app.includes(`${visual}(`), `Missing gesture visual stage: ${visual}`);
 }

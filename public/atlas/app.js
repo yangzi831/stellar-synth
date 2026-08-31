@@ -37,6 +37,7 @@ const state = {
   cultureId: 'chinese',
   compareId: 'western',
   mode: 'atlas',
+  arrangementMode: 'path',
   visibleCultureId: 'chinese',
   visibleStarIds: new Set(),
   selected: null,
@@ -50,6 +51,7 @@ const state = {
   pointer: null,
   trail: [],
   visualEvents: [],
+  starEventVisuals: [],
   keyboardHeld: new Set(),
   keyboardGestureIds: new Map(),
   gestureRequests: new Map(),
@@ -209,12 +211,126 @@ function sequenceFor(item) {
   }).filter((item) => item.id);
 }
 
+function stableSeed(value = '') {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function angularDistance(a, b) {
+  if (!a || !b) return 180;
+  const dra = wrapHours(a.ra - b.ra) * 15 * Math.cos(((a.dec + b.dec) / 2) * Math.PI / 180);
+  return Math.hypot(dra, a.dec - b.dec);
+}
+
+function topologyGroups(item, sequence) {
+  const byId = new Map(sequence.map((step) => [step.id, step]));
+  const adjacency = new Map(sequence.map((step) => [step.id, new Set()]));
+  for (const line of item.lines || []) {
+    for (let index = 1; index < line.length; index += 1) {
+      if (!adjacency.has(line[index - 1]) || !adjacency.has(line[index])) continue;
+      adjacency.get(line[index - 1]).add(line[index]);
+      adjacency.get(line[index]).add(line[index - 1]);
+    }
+  }
+  const groups = [];
+  const keys = new Set();
+  const addGroup = (ids, role) => {
+    const stars = [...new Set(ids)].map((id) => byId.get(id)).filter(Boolean).slice(0, 8);
+    if (stars.length < 2) return;
+    const key = stars.map((star) => star.id).sort((a, b) => a - b).join(':');
+    if (keys.has(key)) return;
+    keys.add(key); groups.push({ stars, role });
+  };
+
+  // Branch points become polyphonic splits; short line segments become phrases.
+  for (const [id, neighbors] of adjacency) {
+    if (neighbors.size >= 2) addGroup([id, ...neighbors], 'branch');
+  }
+  for (const line of item.lines || []) {
+    for (let index = 0; index < line.length - 1; index += 3) addGroup(line.slice(index, index + 4), 'line-segment');
+  }
+
+  // Bright anchors collect their closest connected/spatial responses.
+  const anchors = [...sequence].sort((a, b) => (a.mag ?? 8) - (b.mag ?? 8)).slice(0, Math.min(3, sequence.length));
+  for (const anchor of anchors) {
+    const neighbors = [...(adjacency.get(anchor.id) || [])].map((id) => byId.get(id)).filter(Boolean);
+    const spatial = sequence.filter((star) => star.id !== anchor.id)
+      .sort((a, b) => angularDistance(anchor, a) - angularDistance(anchor, b)).slice(0, 3);
+    addGroup([anchor.id, ...neighbors.map((star) => star.id), ...spatial.map((star) => star.id)], 'anchor-response');
+  }
+  if (!groups.length && sequence.length > 1) {
+    for (let index = 0; index < sequence.length; index += 3) addGroup(sequence.slice(index, index + 3).map((star) => star.id), 'proximity');
+  }
+  return groups;
+}
+
+function buildStarEvents(item, sequence, mode = state.arrangementMode) {
+  if (!item || !sequence.length) return [];
+  const seed = stableSeed(`${state.visibleCultureId}:${item.id}:${mode}`);
+  if (mode === 'path') return sequence.map((star, index) => ({
+    id: `path-${star.id}-${index}`, starIds: [star.id], stars: [star], onsetBeats: 0,
+    durationBeats: clamp((star.interval || 1) * 0.5, 0.275, 1.2), intensity: clamp(1 - (star.mag ?? 4) / 8, 0.36, 0.92),
+    velocity: clamp(1 - (star.mag ?? 4) / 8, 0.3, 0.95), repeat: 1, subdivisionBeats: 0.25,
+    restBeats: 0, visualMode: 'path', musicalRole: 'line-travel', seed: seed + index * 17,
+  }));
+
+  const topology = topologyGroups(item, sequence);
+  const groups = topology.length ? topology : [{ stars: sequence.slice(0, Math.min(3, sequence.length)), role: 'single-anchor' }];
+  if (mode === 'group') return groups.map((group, index) => ({
+    id: `group-${index}-${group.stars.map((star) => star.id).join('-')}`,
+    starIds: group.stars.map((star) => star.id), stars: group.stars, onsetBeats: 0,
+    durationBeats: clamp(0.72 + group.stars.length * 0.13 + angularDistance(group.stars[0], group.stars.at(-1)) / 90, 0.8, 1.8),
+    intensity: clamp(0.5 + group.stars.length * 0.07, 0.55, 0.92), velocity: 0.72,
+    repeat: 1, subdivisionBeats: 0.5, restBeats: index % 3 === 2 ? 0.5 : 0.2,
+    visualMode: 'group', musicalRole: group.role, seed: seed + index * 31,
+  }));
+
+  const ordered = [...groups].sort((a, b) => {
+    const aKey = stableSeed(`${seed}:${a.stars.map((star) => star.id).join(':')}`);
+    const bKey = stableSeed(`${seed}:${b.stars.map((star) => star.id).join(':')}`);
+    return aKey - bKey;
+  });
+  const source = ordered.length ? ordered : [{ stars: sequence.slice(0, 3), role: 'proximity' }];
+  return source.map((group, index) => {
+    const eventSeed = seed + index * 47;
+    const repeat = 2 + (eventSeed % 3);
+    const subdivisionBeats = eventSeed % 4 === 0 ? 0.5 : 0.25;
+    const accent = index > 0 && index % 5 === 4;
+    const stars = accent ? group.stars.slice(0, 6) : group.stars.slice(0, 2 + (eventSeed % 3));
+    return {
+      id: `fragment-${index}-${stars.map((star) => star.id).join('-')}`,
+      starIds: stars.map((star) => star.id), stars, onsetBeats: 0,
+      durationBeats: (repeat - 1) * subdivisionBeats + 0.28,
+      intensity: accent ? 0.92 : 0.58 + (eventSeed % 4) * 0.08,
+      velocity: accent ? 0.88 : 0.62, repeat, subdivisionBeats,
+      restBeats: accent ? 1.25 : 0.5 + ((eventSeed >>> 3) % 3) * 0.25,
+      visualMode: 'fragment', musicalRole: accent ? 'accent' : group.role,
+      seed: eventSeed,
+    };
+  });
+}
+
 function setAudioLandmark(item) {
-  audio.setSequence(sequenceFor(item), {
+  const sequence = sequenceFor(item);
+  const events = buildStarEvents(item, sequence, state.arrangementMode);
+  audio.setSequence(sequence, {
     cultureId: state.visibleCultureId,
     landmarkId: item?.id,
     kind: item?.kind,
-  });
+  }, { mode: state.arrangementMode, events });
+  state.starEventVisuals = [];
+}
+
+function setArrangementMode(mode) {
+  if (!['path', 'group', 'fragment'].includes(mode)) return;
+  state.arrangementMode = mode;
+  $$('.arrangement-mode').forEach((button) => button.classList.toggle('on', button.dataset.arrangement === mode));
+  if (state.selected) setAudioLandmark(state.selected);
+  $('#status').textContent = `${mode.toUpperCase()} · ${mode === 'path' ? '路径旋律 / MELODIC ROUTE' : mode === 'group' ? '拓扑群组 / TOPOLOGICAL VOICING' : '碎片闪烁 / POINTILLISTIC BURSTS'}`;
 }
 
 function resetView() {
@@ -426,6 +542,7 @@ function setMode(mode) {
     state.compareLoops = 0;
   }
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
+  $('#arrangement-modes').hidden = mode !== 'play';
   $('#compare-panel').hidden = mode !== 'compare';
   if (mode === 'compare') {
     state.auto = false;
@@ -621,6 +738,36 @@ function drawStars() {
     if (active) {
       ctx.strokeStyle = 'rgba(242,242,242,.34)';
       ctx.beginPath(); ctx.arc(point.x, point.y, 8 + (frame % 24), 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+}
+
+function drawStarEventVisuals() {
+  const now = audio.clockSnapshot().now;
+  state.starEventVisuals = state.starEventVisuals.filter((visual) => now - visual.audioTime < 2.8);
+  for (const visual of state.starEventVisuals) {
+    const age = now - visual.audioTime;
+    if (age < -0.02) continue;
+    const event = visual.event;
+    const fragment = visual.mode === 'fragment';
+    const group = visual.mode === 'group';
+    const attack = clamp(1 - Math.max(0, age) / (fragment ? 0.22 : group ? 0.75 : 0.5), 0, 1);
+    const afterglow = clamp(1 - Math.max(0, age) / 2.8, 0, 1);
+    const points = event.stars.map((star) => starPoint(star)).filter((point) => point.x > -30 && point.x < width + 30 && point.y > -30 && point.y < height + 30);
+    if (points.length > 1 && (group || fragment)) {
+      ctx.strokeStyle = `rgba(210,210,210,${(group ? 0.16 : 0.1) * afterglow})`;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      points.forEach((point, index) => { if (index) ctx.lineTo(point.x, point.y); else ctx.moveTo(point.x, point.y); });
+      ctx.stroke();
+    }
+    for (const point of points) {
+      const radius = fragment ? 3.5 + attack * 5.5 : group ? 5 + attack * 7 : 3 + attack * 4;
+      ctx.fillStyle = `rgba(250,250,250,${0.12 * afterglow + 0.78 * attack})`;
+      ctx.beginPath(); ctx.arc(point.x, point.y, Math.max(1.8, radius * 0.34), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(235,235,235,${0.08 * afterglow + 0.3 * attack})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.arc(point.x, point.y, radius + Math.max(0, age) * (fragment ? 8 : 5), 0, Math.PI * 2); ctx.stroke();
     }
   }
 }
@@ -826,6 +973,7 @@ function draw(now) {
     if (progress >= 1) state.transition = null;
   } else drawCultureLines(state.visibleCultureId, 1, true);
   drawStars();
+  drawStarEventVisuals();
   drawCorridors();
   drawGestureVisuals();
   drawMicroSequencer();
@@ -1032,16 +1180,28 @@ audio.addEventListener('state', (event) => {
 
 audio.addEventListener('step', (event) => {
   state.activeStep = event.detail.index;
-  if (state.mode === 'compare' && event.detail.index === 0 && event.detail.tick > 0) {
+  if (state.mode === 'compare' && event.detail.loopStart && event.detail.tick > 0) {
     state.compareLoops += 1;
     const elapsed = performance.now() - state.compareStartedAt;
     if (elapsed >= 4200) queueCompareSwitch();
     return;
   }
-  if (state.auto && event.detail.index === 0 && event.detail.tick > 0) {
+  if (state.auto && event.detail.loopStart && event.detail.tick > 0) {
     state.autoLoops += 1;
     if (state.autoLoops >= 2) { state.autoLoops = 0; nextAutoLandmark(); }
   }
+});
+
+audio.addEventListener('star-event', (event) => {
+  const detail = event.detail;
+  const firstId = detail.event.starIds?.[0];
+  const index = audio.sequence.findIndex((step) => step.id === firstId);
+  if (index >= 0) state.activeStep = index;
+  state.starEventVisuals.push(detail);
+  $('#arrangement-modes').dataset.profile = detail.profileId;
+  $('#arrangement-modes').dataset.eventMode = detail.mode;
+  $('#arrangement-modes').dataset.eventSize = String(detail.event.starIds?.length || 0);
+  if (state.starEventVisuals.length > 96) state.starEventVisuals.splice(0, state.starEventVisuals.length - 96);
 });
 
 audio.addEventListener('gesture', (event) => {
@@ -1101,6 +1261,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 $$('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
+$$('.arrangement-mode').forEach((button) => button.addEventListener('click', () => setArrangementMode(button.dataset.arrangement)));
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
 $('#drawer-close').addEventListener('click', closeDrawer);

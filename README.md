@@ -6,9 +6,9 @@ An independent, local-first web instrument built from **D5 v13 — Sequencer Map
 
 ## 在线试玩 / Live demo
 
-**[打开 Stellar Synth / 星宿频率](https://yangzi831.github.io/stellar-synth/)**
+**[打开 Stellar Synth / 星宿频率（Netlify）](https://stellar-synth-atlas.netlify.app/atlas/)**
 
-GitHub Pages is the primary public demo and is suitable for ordinary mobile and WeChat access. The previous [one-sky-many-worlds GitHub Pages URL](https://yangzi831.github.io/one-sky-many-worlds/) is retained as a compatibility redirect. The alternate Sites deployment remains available at [one-sky-many-worlds.yzi763343.chatgpt.site](https://one-sky-many-worlds.yzi763343.chatgpt.site).
+The existing [GitHub Pages deployment](https://yangzi831.github.io/stellar-synth/) remains public and suitable for ordinary mobile and WeChat access. The previous [one-sky-many-worlds GitHub Pages URL](https://yangzi831.github.io/one-sky-many-worlds/) is retained as a compatibility redirect. The alternate Sites deployment remains available at [one-sky-many-worlds.yzi763343.chatgpt.site](https://one-sky-many-worlds.yzi763343.chatgpt.site).
 
 建议使用桌面浏览器与耳机。首次播放需要点击 `PLAY` 解锁浏览器音频；`PANIC` 可立即停止全部声音。
 
@@ -25,6 +25,8 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 - Brighter culture-specific star points rendered above constellation lines.
 - Computer-keyboard performance for up to 72 landmark stars: `1–0`, `Q–P`, `A–L`, `Z–M`, with `Shift` opening the second key bank.
 - A shared audio/visual gesture state: press plays a star-specific tuned bell, soft keys, filtered synth, electronic bass or procedural resonant mallet while creating a liquid ripple; hold adds beat-synchronous pulse and bounded granular texture; release leaves a 2.8-second filter/reverb and topology tail.
+- Three automatic event arrangements share one `StarEvent` clock: **PATH** preserves distance-shaped melodic travel, **GROUP** turns branch points, line segments and bright-star neighbourhoods into controlled simultaneous events, and **FRAGMENT** produces deterministic 2–4 hit pointillistic bursts with bounded rests and afterglow. Visual groups may contain more stars than the 3–5 representative audio voices, keeping dense maps clean.
+- A `CultureMusicProfile` layer now sits above landmark and star identity. Chinese uses open pentatonic spacing and sparse metallic gestures; Western favours modal vertical voicing; Indian Vedic uses a stable tonic/fifth drone and cyclic melodic orbit; Northern Andes uses airy, pulse-oriented pentatonic ostinati and call/response grouping. These four profiles are culture-inspired electronic prototypes, not claims of ethnomusicological reconstruction or ethnic-instrument emulation. The other 11 cultures retain the prior deterministic stellar-modal fallback.
 - 150 BPM Web Audio engine derived from D5, now layering the original plucks with multi-cycle ambient pads, generative arpeggios, melodic motifs, electronic bass, procedural drums, pumping dynamics and glitch textures. Every landmark deterministically derives its own tonic, bounded mode, 3/4–7/8–4/4–5/4 cycle, harmonic motion, cadence, drum geometry and oscillator palette from its culture ID, landmark ID and stellar path. Stars shape the music without a universal backing track. Percussion and glitch one-shots are procedurally generated sample buffers; no external sample pack or recording is bundled.
 - True stellar positions and apparent magnitudes for 3,719 HIP stars.
 - A build-time adapter for Stellarium `index.json` and `description.md` data.
@@ -86,6 +88,8 @@ The repository includes the generated browser-ready JSON. The optional 32 MB HYG
 
 ## Still incomplete
 
+- The Chinese, Western, Indian Vedic and Northern Andes musical grammars are deliberately bounded prototypes. More culture profiles require source-led musical research rather than invented mappings.
+- Manual keyboard, mouse and touch remain direct single-star instruments. Manual multi-star chords, Web MIDI, sample slots and COMPARE interweaving are deferred.
 - Culture-specific renderers for Chinese enclosure hierarchy, lunar rings, horizon gates, dark Milky Way regions, Egyptian decan clocks and landscape correspondences are represented in the data model but are not yet specialized visual renderers.
 - Chinese data retains individual Xingguan geometry and names. A full scholarly navigation layer for 三垣 → 四象 → 二十八宿 → 星官 → 恒星 needs an additional curated hierarchy dataset; it is not inferred from Western constellations.
 - Constellation stories are shown when the source attaches one; otherwise the culture introduction is used.

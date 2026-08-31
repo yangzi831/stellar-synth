@@ -26,6 +26,57 @@ const TONICS = [38, 40, 41, 43, 45, 47];
 const METERS = [12, 14, 16, 20]; // 3/4, 7/8, 4/4, 5/4 in sixteenth steps.
 const PROGRESSIONS = [[0], [0, 5, 3], [0, 3, 5, 4], [0, 4, 5, 3], [0, 2, 6]];
 
+// Culture profiles describe musical organisation, never ethnic instrument skins.
+// The four named profiles are intentionally culture-inspired prototypes; every
+// other sky culture keeps the original deterministic landmark grammar.
+export const CULTURE_MUSIC_PROFILES = {
+  chinese: {
+    id: 'chinese', pitchCollection: [0, 2, 4, 7, 9], tonicPolicy: 'landmark',
+    meters: [12, 16, 20], progressions: [[0], [0, 3], [0, 4, 3]],
+    intervalPreferences: [0, 4, 7, 12, 16], voicing: 'open-pentatonic', voiceCount: 3,
+    register: { base: 7, spread: 24 }, groupingPreference: 'sparse-anchor',
+    rhythm: { arpStride: [3, 4], syncopation: 0.2, density: 0.56 },
+    fragment: { repeats: [2, 3], subdivisionBeats: [0.25, 0.5], restBeats: [0.75, 1.25], articulation: 'metallic' },
+    drone: { degree: 0, fifth: true, level: 0.45 }, spatial: 0.72,
+  },
+  western: {
+    id: 'western', pitchCollections: MODES.slice(0, 4).map((entry) => entry.intervals), tonicPolicy: 'landmark',
+    meters: METERS, progressions: PROGRESSIONS,
+    intervalPreferences: [0, 2, 4, 6, 8], voicing: 'modal-vertical', voiceCount: 4,
+    register: { base: 0, spread: 24 }, groupingPreference: 'branch-voicing',
+    rhythm: { arpStride: [2, 3, 4], syncopation: 0.34, density: 0.72 },
+    fragment: { repeats: [2, 4], subdivisionBeats: [0.25, 0.5], restBeats: [0.5, 1], articulation: 'broken-voicing' },
+    drone: { degree: 0, fifth: false, level: 0.2 }, spatial: 0.62,
+  },
+  indian: {
+    id: 'indian', pitchCollection: [0, 2, 3, 5, 7, 9, 10], tonicPolicy: 'culture',
+    meters: [14, 16, 20], progressions: [[0], [0, 4]],
+    intervalPreferences: [0, 1, 4, 7, 12], voicing: 'tonic-orbit', voiceCount: 3,
+    register: { base: 0, spread: 19 }, groupingPreference: 'cyclic-orbit',
+    rhythm: { arpStride: [3, 4], syncopation: 0.42, density: 0.62 },
+    fragment: { repeats: [2, 3], subdivisionBeats: [0.5, 0.75], restBeats: [0.5, 1.5], articulation: 'ornament-orbit' },
+    drone: { degree: 0, fifth: true, level: 0.8 }, spatial: 0.48,
+  },
+  northern_andes: {
+    id: 'northern-andes', pitchCollection: [0, 2, 4, 7, 9], tonicPolicy: 'landmark',
+    meters: [12, 14, 20], progressions: [[0], [0, 4], [0, 3, 4]],
+    intervalPreferences: [0, 2, 4, 7, 12], voicing: 'airy-ostinato', voiceCount: 4,
+    register: { base: 12, spread: 24 }, groupingPreference: 'call-response',
+    rhythm: { arpStride: [2, 3], syncopation: 0.58, density: 0.82 },
+    fragment: { repeats: [2, 4], subdivisionBeats: [0.25, 0.5], restBeats: [0.5, 1], articulation: 'airy-pulse' },
+    drone: { degree: 0, fifth: false, level: 0.32 }, spatial: 0.82,
+  },
+};
+
+const FALLBACK_CULTURE_PROFILE = {
+  id: 'deterministic-fallback', meters: METERS, progressions: PROGRESSIONS,
+  intervalPreferences: [0, 2, 4, 7, 12], voicing: 'stellar-modal', voiceCount: 4,
+  register: { base: 0, spread: 24 }, groupingPreference: 'topology',
+  rhythm: { arpStride: [2, 3, 4], syncopation: 0.38, density: 0.68 },
+  fragment: { repeats: [2, 4], subdivisionBeats: [0.25, 0.5], restBeats: [0.5, 1.25], articulation: 'stellar' },
+  drone: { degree: 0, fifth: false, level: 0.25 }, spatial: 0.68,
+};
+
 const hashText = (value = '') => {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -68,6 +119,9 @@ export class SequencerAudio extends EventTarget {
     this.timer = null;
     this.nextTick = 0;
     this.tick = 0;
+    this.eventTick = 0;
+    this.events = [];
+    this.arrangementMode = 'path';
     this.arrangementStep = 0;
     this.nextArrangementTick = 0;
     this.sequence = [];
@@ -151,27 +205,44 @@ export class SequencerAudio extends EventTarget {
   createProfile(sequence, identity = {}) {
     const starSignature = sequence.slice(0, 24).map((step) => step.id).join(',');
     const seed = hashText(`${identity.cultureId || 'sky'}:${identity.landmarkId || 'atlas'}:${starSignature}`);
-    const mode = MODES[seed % MODES.length];
-    const meterSteps = METERS[(seed >>> 3) % METERS.length];
-    const progression = PROGRESSIONS[(seed >>> 6) % PROGRESSIONS.length];
+    const grammar = CULTURE_MUSIC_PROFILES[identity.cultureId] || FALLBACK_CULTURE_PROFILE;
+    const collections = grammar.pitchCollections || (grammar.pitchCollection ? [grammar.pitchCollection] : MODES.map((entry) => entry.intervals));
+    const modeIntervals = collections[seed % collections.length];
+    const namedMode = MODES.find((entry) => entry.intervals === modeIntervals || entry.intervals.join(',') === modeIntervals.join(','));
+    const meters = grammar.meters || METERS;
+    const progressions = grammar.progressions || PROGRESSIONS;
+    const meterSteps = meters[(seed >>> 3) % meters.length];
+    const progression = progressions[(seed >>> 6) % progressions.length];
+    const tonicSeed = grammar.tonicPolicy === 'culture' ? hashText(identity.cultureId || 'sky') : seed;
+    const arpChoices = grammar.rhythm?.arpStride || [2, 3, 4];
     return {
       seed,
-      modeId: mode.id,
-      mode: mode.intervals,
-      tonic: TONICS[(seed >>> 10) % TONICS.length],
+      cultureId: identity.cultureId || 'fallback',
+      grammar,
+      modeId: namedMode?.id || `${grammar.id}-collection`,
+      mode: modeIntervals,
+      tonic: TONICS[(tonicSeed >>> 10) % TONICS.length],
       meterSteps,
       progression,
-      arpStride: [2, 3, 4][(seed >>> 14) % 3],
+      arpStride: arpChoices[(seed >>> 14) % arpChoices.length],
       timbre: (seed >>> 17) % 4,
       drumStyle: (seed >>> 20) % 4,
       cadence: (seed >>> 23) % 3,
     };
   }
 
-  setSequence(sequence, identity = {}) {
+  setSequence(sequence, identity = {}, composition = {}) {
     this.sequence = sequence || [];
+    this.events = composition.events || this.sequence.map((step, index) => ({
+      id: `path-${step.id}-${index}`, starIds: [step.id], stars: [step], onsetBeats: 0,
+      durationBeats: clamp((step.interval || 1) * 0.5, 0.275, 1.2), intensity: 0.62,
+      velocity: 1, repeat: 1, subdivisionBeats: 0.25, restBeats: 0,
+      visualMode: 'path', musicalRole: 'path', seed: index + 1,
+    }));
+    this.arrangementMode = composition.mode || 'path';
     this.profile = this.createProfile(this.sequence, identity);
     this.tick = 0;
+    this.eventTick = 0;
     this.arrangementStep = 0;
     if (this.running && this.context) this.nextArrangementTick = this.context.currentTime + 0.035;
     if (this.delay) {
@@ -244,12 +315,19 @@ export class SequencerAudio extends EventTarget {
       this.nextArrangementTick += BEAT / 4;
     }
     while (this.nextTick < this.context.currentTime + LOOK_AHEAD) {
-      if (this.sequence.length) {
-        const stepIndex = this.tick % this.sequence.length;
-        this.triggerStep(this.sequence[stepIndex], stepIndex, this.nextTick, false);
-        const delay = clamp(this.sequence[stepIndex]?.interval || 1, 0.55, 2.4);
-        this.nextTick += EIGHTH * delay;
-        this.dispatchEvent(new CustomEvent('step', { detail: { index: stepIndex, tick: this.tick } }));
+      if (this.events.length) {
+        const eventIndex = this.eventTick % this.events.length;
+        const event = this.events[eventIndex];
+        this.triggerStarEvent(event, eventIndex, this.nextTick);
+        const eventBeats = Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
+        this.nextTick += BEAT * eventBeats;
+        const firstStar = event.stars?.[0];
+        const stepIndex = firstStar ? this.sequence.findIndex((step) => step.id === firstStar.id) : -1;
+        this.dispatchEvent(new CustomEvent('step', { detail: {
+          index: stepIndex, tick: this.tick, eventIndex, loopStart: eventIndex === 0,
+          mode: this.arrangementMode, event,
+        } }));
+        this.eventTick += 1;
       } else this.nextTick += EIGHTH;
       this.tick += 1;
     }
@@ -562,6 +640,86 @@ export class SequencerAudio extends EventTarget {
     }
   }
 
+  selectEventVoices(event) {
+    const stars = event.stars || [];
+    if (!stars.length) return [];
+    const grammar = this.profile.grammar;
+    const baseIndex = this.sequence.findIndex((step) => step.id === stars[0].id);
+    const baseDegree = this.degreeForStep(stars[0], Math.max(0, baseIndex));
+    let notes;
+    if (grammar.voicing === 'open-pentatonic') {
+      const offsets = [0, 4, 7, 12, 16];
+      notes = stars.map((_, index) => this.profile.tonic + this.profile.mode[baseDegree % this.profile.mode.length] + offsets[index % offsets.length]);
+    } else if (grammar.voicing === 'modal-vertical') {
+      const degrees = [0, 2, 4, 6, 8];
+      notes = stars.map((_, index) => scaleNote(this.profile.tonic, baseDegree + degrees[index % degrees.length], this.profile.mode));
+    } else if (grammar.voicing === 'tonic-orbit') {
+      notes = [this.profile.tonic, this.profile.tonic + 7, ...stars.map((star, index) => this.noteForStep(star, index, index % 2 ? 12 : 0))];
+    } else if (grammar.voicing === 'airy-ostinato') {
+      notes = stars.map((star, index) => this.noteForStep(star, index, index % 2 ? 12 : 0));
+    } else notes = stars.map((star, index) => this.noteForStep(star, index, index > 2 ? 12 : 0));
+    const unique = [];
+    for (const note of notes) {
+      const bounded = clamp(Math.round(note), 36, 88);
+      if (!unique.some((existing) => Math.abs(existing - bounded) < 2 || Math.abs(existing - bounded) === 12)) unique.push(bounded);
+      if (unique.length >= clamp(grammar.voiceCount || 4, 3, 5)) break;
+    }
+    return unique.length ? unique : [this.profile.tonic];
+  }
+
+  profileChord(degree = 0) {
+    const grammar = this.profile.grammar;
+    if (grammar.voicing === 'open-pentatonic') {
+      const root = scaleNote(this.profile.tonic, degree, this.profile.mode);
+      return [root, root + 7, root + 12];
+    }
+    if (grammar.voicing === 'tonic-orbit') return [this.profile.tonic - 12, this.profile.tonic, this.profile.tonic + 7];
+    if (grammar.voicing === 'airy-ostinato') {
+      const root = scaleNote(this.profile.tonic, degree, this.profile.mode);
+      return [root, root + 12, scaleNote(this.profile.tonic + 12, degree + 2, this.profile.mode)];
+    }
+    return [0, 2, 4].map((offset) => scaleNote(this.profile.tonic, degree + offset, this.profile.mode));
+  }
+
+  triggerStarEvent(event, eventIndex, time) {
+    if (!event?.stars?.length || !this.context) return;
+    const repeats = clamp(Math.round(event.repeat || 1), 1, 4);
+    const subdivision = BEAT * clamp(event.subdivisionBeats || 0.25, 0.25, 1);
+    const visualStars = event.stars.map((star) => ({ id: star.id, ra: star.ra, dec: star.dec, mag: star.mag }));
+    for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex += 1) {
+      const when = time + repeatIndex * subdivision;
+      if (this.arrangementMode === 'path') {
+        const step = event.stars[0];
+        const index = Math.max(0, this.sequence.findIndex((candidate) => candidate.id === step.id));
+        this.triggerStep(step, index, when, false);
+      } else {
+        const notes = this.selectEventVoices(event);
+        const fragment = this.arrangementMode === 'fragment';
+        const duration = fragment ? BEAT * (0.18 + (event.seed % 3) * 0.055) : BEAT * clamp(event.durationBeats || 0.8, 0.45, 1.8);
+        const articulation = this.profile.grammar.fragment?.articulation || 'stellar';
+        notes.forEach((note, voiceIndex) => {
+          const star = event.stars[voiceIndex % event.stars.length];
+          const pan = clamp((star?.pan ?? 0) * this.profile.grammar.spatial, -0.86, 0.86);
+          const gain = (fragment ? 0.0125 : 0.0105) * clamp(event.intensity || 0.65, 0.35, 1);
+          const type = articulation === 'metallic' ? (voiceIndex ? 'triangle' : 'sine')
+            : articulation === 'airy-pulse' ? 'triangle'
+              : articulation === 'ornament-orbit' ? 'sine'
+                : ['triangle', 'sine', 'square'][voiceIndex % 3];
+          const cutoff = fragment ? 3900 + voiceIndex * 720 : 2100 + voiceIndex * 480;
+          this.tone(note, when + voiceIndex * (fragment ? 0.008 : 0.014), duration, gain, type, cutoff, pan);
+        });
+        if (fragment && event.musicalRole === 'accent') {
+          const star = event.stars[event.stars.length - 1];
+          this.noiseHit(when, 0.035, 0.0045, 5200 + (event.seed % 5) * 420, 8, (star?.pan ?? 0) * 0.5);
+        }
+      }
+      this.dispatchEvent(new CustomEvent('star-event', { detail: {
+        event: { ...event, stars: visualStars }, eventIndex, repeatIndex, audioTime: when,
+        mode: this.arrangementMode, profileId: this.profile.grammar.id,
+      } }));
+    }
+  }
+
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
     const profile = this.profile;
@@ -605,7 +763,9 @@ export class SequencerAudio extends EventTarget {
     // Each star chooses a chord member and register. The chord keeps the result
     // consonant; the star order keeps different landmarks melodically distinct.
     if ((cycleStep + 1) % profile.arpStride === 0) {
-      const chordOffsets = [0, 2, 4];
+      const chordOffsets = profile.grammar.voicing === 'tonic-orbit' ? [0, 1, 4]
+        : profile.grammar.voicing === 'open-pentatonic' ? [0, 3, 4]
+          : [0, 2, 4];
       const starDegree = this.degreeForStep(nextStep, stepNumber);
       const chordOffset = chordOffsets[starDegree % chordOffsets.length];
       const octave = Number.isFinite(nextStep?.mag) && nextStep.mag < 2.2 ? 24 : 12;
@@ -615,12 +775,16 @@ export class SequencerAudio extends EventTarget {
 
     // Chord duration follows the landmark's own cycle (3/4, 7/8, 4/4 or 5/4).
     if (cycleStep === 0) {
-      const chord = [0, 2, 4].map((offset) => scaleNote(profile.tonic, chordDegree + offset, profile.mode));
+      const chord = this.profileChord(chordDegree);
       const cycleDuration = profile.meterSteps * BEAT / 4;
       this.pad(chord, time, cycleDuration * 1.12, 0.0095);
       if (progressionIndex === 0) {
         const formDuration = cycleDuration * profile.progression.length;
-        this.pad([profile.tonic - 12, profile.tonic, profile.tonic + 12], time, formDuration * 1.08, 0.0048);
+        const drone = profile.grammar.drone;
+        const droneNotes = drone?.fifth
+          ? [profile.tonic - 12, profile.tonic, profile.tonic + 7]
+          : [profile.tonic - 12, profile.tonic, profile.tonic + 12];
+        this.pad(droneNotes, time, formDuration * 1.08, 0.0048 * (drone?.level || 0.35));
       }
     }
 
