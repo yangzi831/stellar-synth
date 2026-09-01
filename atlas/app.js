@@ -20,8 +20,6 @@ const stage = $('#stage');
 const audio = new SequencerAudio();
 
 const KEYBOARD_STEPS = [
-  ['Digit1', '1'], ['Digit2', '2'], ['Digit3', '3'], ['Digit4', '4'], ['Digit5', '5'],
-  ['Digit6', '6'], ['Digit7', '7'], ['Digit8', '8'], ['Digit9', '9'], ['Digit0', '0'],
   ['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'],
   ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
   ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
@@ -39,6 +37,7 @@ const state = {
   mode: 'atlas',
   arrangementMode: 'path',
   performanceMode: 'star',
+  scene: 1,
   selectedTrack: 'drums',
   controlNodes: [],
   activeControlNode: -1,
@@ -99,6 +98,8 @@ class ParticleField {
     this.shocks = [];
     this.lastAmbient = 0;
     this.lastHold = new Map();
+    this.meterPeak = 0;
+    this.meterRms = 0;
     this.maxParticles = window.matchMedia('(max-width: 680px)').matches ? 320 : 880;
   }
 
@@ -136,6 +137,14 @@ class ParticleField {
 
   processEvent(event, musicState) {
     const ids = event.starIds?.length ? event.starIds : state.controlNodes.slice(0, 3).map((node) => node.step.id);
+    if (event.source === 'manual') {
+      ids.slice(0, 2).forEach((id, index) => {
+        const point = this.pointForId(id);
+        this.shocks.push({ x: point.x, y: point.y, born: event.audioTime, intensity: 1.3 });
+        this.spawn(point, 18, { seed: frame + index * 109, speed: 34, life: 1.65, size: 1.05, alpha: 0.48, directionX: (index ? -1 : 1) * 18, motion: musicState.particleMotion });
+      });
+      return;
+    }
     if (event.source === 'star') {
       const mode = event.mode || event.event?.visualMode || 'path';
       (event.event?.starIds || ids).forEach((id, index) => {
@@ -153,10 +162,15 @@ class ParticleField {
       if (event.type === 'kick') {
         this.shocks.push({ x: point.x, y: point.y, born: event.audioTime, intensity: event.intensity });
         this.spawn(point, 10, { seed: frame + index * 71, speed: 42, life: 0.55, alpha: 0.25, motion: 'radial' });
-      } else if (event.type === 'perc' || event.type === 'glitch') {
-        this.spawn(point, 5, { seed: frame + index * 53, speed: 36, life: 0.38, size: 0.55, alpha: 0.42, motion: musicState.particleMotion });
-      } else if (event.type === 'synth' || event.type === 'lead') {
-        this.spawn(point, event.type === 'lead' ? 9 : 6, { seed: frame + index * 43, speed: 16, life: event.type === 'lead' ? 1.8 : 1.1, directionX: (index % 2 ? -1 : 1) * 14, size: 0.75, motion: musicState.particleMotion });
+      } else if (event.type === 'closed-hat') {
+        this.spawn(point, 3, { seed: frame + index * 59, speed: 28, life: 0.24, size: 0.42, alpha: 0.34, motion: musicState.particleMotion });
+      } else if (event.type === 'open-hat') {
+        this.spawn(point, 7, { seed: frame + index * 61, speed: 43, life: 0.55, size: 0.5, alpha: 0.39, motion: 'radial' });
+      } else if (event.type === 'perc' || event.type === 'glitch' || event.type === 'count-in') {
+        this.spawn(point, event.type === 'glitch' ? 8 : 5, { seed: frame + index * 53, speed: 36, life: 0.38, size: 0.55, alpha: 0.42, motion: musicState.particleMotion });
+      } else if (event.type === 'synth' || event.type === 'synth-sequence' || event.type === 'lead' || event.type === 'melodic-phrase') {
+        const melodic = event.type === 'lead' || event.type === 'melodic-phrase';
+        this.spawn(point, melodic ? 9 : 6, { seed: frame + index * 43, speed: 16, life: melodic ? 1.8 : 1.1, directionX: (index % 2 ? -1 : 1) * 14, size: 0.75, motion: musicState.particleMotion });
       } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture') {
         this.spawn(point, 4, { seed: frame + index * 37, speed: 6, life: 2.8, size: 0.65, alpha: 0.18, motion: musicState.particleMotion });
       }
@@ -165,6 +179,9 @@ class ParticleField {
 
   draw() {
     const musicState = audio.visualMusicState();
+    const output = audio.outputMetrics();
+    this.meterPeak = Math.max(output.peak, this.meterPeak * 0.998);
+    this.meterRms = this.meterRms * 0.94 + output.rms * 0.06;
     const now = musicState.now;
     this.pending.sort((a, b) => a.audioTime - b.audioTime);
     while (this.pending.length && this.pending[0].audioTime <= now + 0.008) this.processEvent(this.pending.shift(), musicState);
@@ -218,15 +235,18 @@ class ParticleField {
       return true;
     });
     if (frame % 20 === 0) {
+      const toDb = (value) => value > 0 ? 20 * Math.log10(value) : -Infinity;
       stage.dataset.particles = String(this.particles.length);
       stage.dataset.section = musicState.currentSection;
       stage.dataset.energy = musicState.overallEnergy.toFixed(2);
       stage.dataset.musicCulture = musicState.currentCulture;
       stage.dataset.particleMotion = musicState.particleMotion;
+      stage.dataset.rmsDb = Number.isFinite(toDb(this.meterRms)) ? toDb(this.meterRms).toFixed(1) : '-inf';
+      stage.dataset.peakDb = Number.isFinite(toDb(this.meterPeak)) ? toDb(this.meterPeak).toFixed(1) : '-inf';
     }
   }
 
-  clear() { this.particles = []; this.pending = []; this.shocks = []; this.lastHold.clear(); }
+  clear() { this.particles = []; this.pending = []; this.shocks = []; this.lastHold.clear(); this.meterPeak = 0; this.meterRms = 0; }
 }
 
 const particleField = new ParticleField();
@@ -490,23 +510,37 @@ function setAudioLandmark(item) {
 }
 
 function setPerformanceMode(mode) {
-  if (!['star', 'arrange'].includes(mode)) return;
+  if (!['star', 'loop'].includes(mode)) return;
   state.performanceMode = mode;
   $$('.performance-mode').forEach((button) => button.classList.toggle('on', button.dataset.performance === mode));
-  $('#track-lanes').hidden = mode !== 'arrange' || state.mode !== 'play';
+  $('#loop-panel').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#keyboard-note').textContent = mode === 'star'
-    ? `恒星演奏 / STAR PLAY · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
-    : `编排控制 / ARRANGE · ${state.controlNodes.length} 个拓扑节点 · 选择音轨后量化替换 PATTERN`;
+    ? `恒星演奏 / STAR PLAY · QWERTY 字母键 · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
+    : `引导循环 / GUIDED LOOP · 系统自动带你录制 DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE`;
   $('#status').textContent = mode === 'star'
-    ? 'STAR · 键盘与触摸直接演奏恒星'
-    : `ARRANGE · ${state.selectedTrack.toUpperCase()} · 选择标记节点替换生成策略`;
+    ? 'STAR · QWERTY 字母键与触摸直接演奏恒星'
+    : 'LOOP · 点击 START · 1 BAR COUNT-IN · 自动逐层录制';
 }
 
-function selectTrack(trackId) {
-  if (!['drums', 'bass', 'synth', 'harmony', 'lead', 'texture'].includes(trackId)) return;
-  state.selectedTrack = trackId;
-  $$('.track-lane').forEach((button) => button.classList.toggle('on', button.dataset.track === trackId));
-  $('#status').textContent = `ARRANGE · ${trackId.toUpperCase()} · 选择 1–${state.controlNodes.length} / CLICK A CONTROL NODE`;
+async function launchScene(number) {
+  if (!audio.sequence.length || state.mode !== 'play') return;
+  if (!audio.running) await audio.start();
+  if (number === 0) {
+    audio.setSceneAuto(true);
+    $$('.scene-button').forEach((button) => button.classList.toggle('on', button.dataset.scene === '0'));
+    $('#status').textContent = '0 AUTO · ARRANGEMENT DIRECTOR RESUMED';
+    return;
+  }
+  const queued = audio.queueScene(number, 'manual');
+  if (!queued) return;
+  $('#status').textContent = `${number} ${queued.scene.label} · QUEUED → NEXT BAR`;
+}
+
+async function startGuidedLoop() {
+  setPerformanceMode('loop');
+  const snapshot = await audio.startGuidedLoop();
+  $('#loop-start').textContent = '重新录制 RECORD AGAIN';
+  $('#status').textContent = `LOOP · COUNT-IN 1 BAR · ${snapshot.status.toUpperCase()}`;
 }
 
 async function triggerControlNode(controlIndex) {
@@ -739,7 +773,8 @@ function setMode(mode) {
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
   $('#arrangement-modes').hidden = mode !== 'play';
   $('#performance-modes').hidden = mode !== 'play';
-  $('#track-lanes').hidden = mode !== 'play' || state.performanceMode !== 'arrange';
+  $('#scene-launcher').hidden = mode !== 'play';
+  $('#loop-panel').hidden = mode !== 'play' || state.performanceMode !== 'loop';
   $('#compare-panel').hidden = mode !== 'compare';
   if (mode === 'compare') {
     state.auto = false;
@@ -776,7 +811,7 @@ function showDetail(item) {
     .filter((name, index, all) => name && name !== item.nativeName && all.indexOf(name) === index)
     .join(' / ');
   const mappedCount = Math.min(item.starCount, KEYBOARD_STEPS.length * 2);
-  $('#keyboard-note').textContent = `键盘 / KEYBOARD · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
+  $('#keyboard-note').textContent = `键盘 / KEYBOARD · QWERTY 字母键 · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
@@ -1425,13 +1460,41 @@ audio.addEventListener('track-event', (event) => particleField.queue(event.detai
 audio.addEventListener('arrangement-state', (event) => {
   const detail = event.detail;
   $('#performance-modes').dataset.section = detail.currentSection;
-  $$('.track-lane').forEach((button) => {
-    const track = detail.tracks[button.dataset.track];
-    button.classList.toggle('manual', Boolean(track?.manualOverride));
-    button.title = track ? `${track.name}${track.pending != null ? ` → ${track.pending + 1}` : ''}` : '';
-  });
-  if (audio.running && state.performanceMode === 'arrange') {
-    $('#status').textContent = `${detail.currentSection.toUpperCase()} · ARRANGE ${state.selectedTrack.toUpperCase()} · ${detail.manualOverrides.length ? `MANUAL: ${detail.manualOverrides.join(' / ').toUpperCase()}` : 'AUTO DIRECTOR'}`;
+  state.scene = detail.currentScene;
+  $$('.scene-button').forEach((button) => button.classList.toggle('on', detail.sceneAuto ? button.dataset.scene === '0' : Number(button.dataset.scene) === detail.currentScene));
+  stage.dataset.scene = String(detail.currentScene);
+  stage.dataset.sceneAuto = String(detail.sceneAuto);
+});
+
+audio.addEventListener('scene-change', (event) => {
+  const { scene, source } = event.detail;
+  state.scene = scene.number;
+  $('#status').textContent = `${scene.number} ${scene.label} · ${source === 'manual' ? 'MANUAL SCENE APPLIED' : 'AUTO DIRECTOR'}`;
+});
+
+audio.addEventListener('scene-queued', (event) => {
+  const { scene } = event.detail;
+  $('#status').textContent = `${scene.number} ${scene.label} · QUEUED → NEXT BAR`;
+});
+
+audio.addEventListener('loop-state', (event) => {
+  const loop = event.detail;
+  if (!loop.active && loop.status === 'idle') {
+    $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
+    $('#loop-progress').textContent = 'COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE';
+    return;
+  }
+  const completed = loop.completed.length ? loop.completed.join(' + ').toUpperCase() : 'EMPTY';
+  if (loop.status === 'count-in') {
+    $('#loop-stage').textContent = 'COUNT-IN · 1 BAR';
+    $('#loop-progress').textContent = '准备录制 DRUM / PREPARE DRUM';
+  } else if (loop.status === 'recording') {
+    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS`;
+    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · COMPLETED: ${completed}`;
+  } else if (loop.status === 'full') {
+    $('#loop-stage').textContent = 'FULL LOOP · 6 LAYERS';
+    $('#loop-progress').textContent = `PLAYING: ${completed}`;
+    $('#status').textContent = 'FULL LOOP · 你构建的六层循环正在演奏';
   }
 });
 
@@ -1442,7 +1505,9 @@ audio.addEventListener('track-change', (event) => {
 
 audio.addEventListener('gesture', (event) => {
   const gesture = event.detail;
-  if (gesture.phase === 'hold') {
+  if (gesture.phase === 'press') {
+    particleField.queue({ audioTime: gesture.pressedAt, starIds: [gesture.starId], intensity: 1.25 }, 'manual');
+  } else if (gesture.phase === 'hold') {
     $('#status').textContent = `HOLD · PULSE + TEXTURE · ${gesture.density.toFixed(1)} DENSITY · ${BPM} BPM`;
   } else if (gesture.phase === 'release') {
     releaseGestureVisual(gesture.id, false);
@@ -1500,10 +1565,11 @@ document.addEventListener('fullscreenchange', () => {
 $$('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
 $$('.arrangement-mode').forEach((button) => button.addEventListener('click', () => setArrangementMode(button.dataset.arrangement)));
 $$('.performance-mode').forEach((button) => button.addEventListener('click', () => setPerformanceMode(button.dataset.performance)));
-$$('.track-lane').forEach((button) => button.addEventListener('click', () => selectTrack(button.dataset.track)));
-$('#release-overrides').addEventListener('click', () => {
-  audio.releaseTrackOverride();
-  $('#status').textContent = 'AUTO DIRECTOR · ALL TRACKS RELEASED';
+$$('.scene-button').forEach((button) => button.addEventListener('click', () => launchScene(Number(button.dataset.scene))));
+$('#loop-start').addEventListener('click', startGuidedLoop);
+$('#loop-clear').addEventListener('click', () => {
+  audio.clearCurrentLoopLayer();
+  $('#status').textContent = 'LOOP · CURRENT LAYER CLEARED';
 });
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
@@ -1555,12 +1621,20 @@ $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = tru
 document.addEventListener('keydown', (event) => {
   const editable = event.target.matches?.('input, textarea, select, [contenteditable="true"]');
   if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && $('#launch').hidden && $('#overlay').hidden && $('#drawer').hidden) {
-    if (state.performanceMode === 'arrange' && state.mode === 'play' && state.localView) {
-      const controlIndex = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
-      if (controlIndex >= 0 && controlIndex < state.controlNodes.length) {
-        event.preventDefault(); triggerControlNode(controlIndex); return;
+    if (state.mode === 'play' && /^Digit[0-9]$/.test(event.code)) {
+      event.preventDefault();
+      launchScene(Number(event.code.slice(-1)));
+      return;
+    }
+    if (state.performanceMode === 'loop' && state.mode === 'play' && state.localView) {
+      const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+      if (base >= 0) {
+        event.preventDefault();
+        const keyIndex = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
+        const recorded = audio.recordLoopInput(keyIndex);
+        if (recorded) $('#status').textContent = `LOOP INPUT · ${keyboardBinding(keyIndex).label} · QUANTIZED STEP ${recorded.step + 1}`;
+        return;
       }
-      if (controlIndex >= 0) return;
     }
     const index = keyboardStepIndex(event);
     if (index >= 0) {
@@ -1590,6 +1664,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('keyup', (event) => {
+  if (state.performanceMode === 'loop') return;
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return;
   const gestureId = state.keyboardGestureIds.get(event.code);

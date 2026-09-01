@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "policy": "optional-licensed-user-assets-with-synthetic-fallback",
+  "bundledRecordings": false,
+  "cultures": {
+    "chinese": {
+      "guzheng": { "directory": "chinese/guzheng/", "fallback": "synthetic-plucked-string" },
+      "pipa": { "directory": "chinese/pipa/", "fallback": "synthetic-short-pluck" },
+      "dizi": { "directory": "chinese/dizi/", "fallback": "synthetic-air-column" },
+      "metalPercussion": { "directory": "chinese/metal-percussion/", "fallback": "synthetic-metal-strike" }
+    },
+    "western": {
+      "harpsichord": { "directory": "western/harpsichord/", "fallback": "synthetic-harpsichord" },
+      "harp": { "directory": "western/harp/", "fallback": "synthetic-harp" },
+      "piano": { "directory": "western/piano/", "fallback": "synthetic-keys" },
+      "strings": { "directory": "western/strings/", "fallback": "synthetic-string-layer" }
+    },
+    "indian": {
+      "pluckedString": { "directory": "indian/plucked-string/", "fallback": "synthetic-plucked-string" },
+      "drone": { "directory": "indian/drone/", "fallback": "synthetic-tonic-drone" },
+      "percussion": { "directory": "indian/percussion/", "fallback": "synthetic-resonant-percussion" }
+    }
+  }
+}
