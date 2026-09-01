@@ -27,6 +27,8 @@ The reference runtime has one defensive canvas-radius clamp to prevent an interm
 
 The D5 runtime and this project generate sound entirely in JavaScript through the Web Audio API. The signal path uses oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, arpeggios, pads, electronic bass, stereo panning, delay, reverb, gain envelopes and dynamics compression. No WAV, MP3, external sample pack, sound font or third-party recording is included.
 
+`public/audio/culture-samples.json` is a manifest of empty future recording slots, not bundled media. Its current entries use procedural synthesis fallbacks. Any recording added later requires a separate source and license review and must be documented here before publication.
+
 ## Stellarium Sky Cultures
 
 **Project:** Stellarium/stellarium-skycultures  

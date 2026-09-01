@@ -5,6 +5,7 @@ const html = fs.readFileSync(new URL('../public/atlas/index.html', import.meta.u
 const publicIndex = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const audio = fs.readFileSync(new URL('../public/atlas/audio-engine.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../public/atlas/app.js', import.meta.url), 'utf8');
+const sampleManifest = JSON.parse(fs.readFileSync(new URL('../public/audio/culture-samples.json', import.meta.url), 'utf8'));
 const starIds = new Set(data.stars.map((star) => star.id));
 const cultures = new Map(data.cultures.map((culture) => [culture.id, culture]));
 
@@ -40,16 +41,20 @@ for (const control of ['zoom-in', 'zoom-out', 'reset-view', 'landmark-select', '
 for (const arrangement of ['path', 'group', 'fragment']) {
   assert(html.includes(`data-arrangement="${arrangement}"`), `Missing arrangement mode: ${arrangement}`);
 }
-for (const performance of ['star', 'arrange']) {
+for (const performance of ['star', 'loop']) {
   assert(html.includes(`data-performance="${performance}"`), `Missing keyboard mode: ${performance}`);
 }
-for (const track of ['drums', 'bass', 'synth', 'harmony', 'lead', 'texture']) {
-  assert(html.includes(`data-track="${track}"`), `Missing TrackLane control: ${track}`);
+for (let scene = 0; scene <= 9; scene += 1) {
+  assert(html.includes(`data-scene="${scene}"`), `Missing Scene control: ${scene}`);
 }
 assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 BPM.');
+assert(audio.includes('const GROOVE_STEPS = 16'), 'Dance groove must use a fixed 4/4 sixteen-step bar.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
-assert(audio.includes('const MASTER_GAIN = 0.95'), 'Raised master level is missing.');
+assert(audio.includes('const MASTER_GAIN = 1.32'), 'Raised master level is missing.');
+assert(audio.includes('const MAKEUP_GAIN = 1.22'), 'Output makeup stage is missing.');
+assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
+assert(audio.includes('const MANUAL_GAIN = 1.62'), 'Foreground ManualPerformanceBus level is missing.');
 assert(audio.includes('createOscillator'), 'Synthesis oscillator path is missing.');
 assert(audio.includes('const HOLD_THRESHOLD_MS = 350'), 'The 350ms hold threshold is missing.');
 assert(audio.includes('const TWO_BARS = BEAT * 8'), 'Two-bar parameter cadence is missing.');
@@ -60,11 +65,11 @@ for (const method of ['starInstrumentAttack', 'gestureInstrumentTone', 'gestureM
 for (const method of ['triggerStarEvent', 'selectEventVoices', 'profileChord']) {
   assert(audio.includes(`${method}(`), `Missing grouped event audio stage: ${method}`);
 }
-for (const method of ['createTrackLanes', 'queueTrackVariant', 'updateArrangementDirector', 'visualMusicState', 'releaseTrackOverride']) {
+for (const method of ['createTrackLanes', 'queueTrackVariant', 'updateArrangementDirector', 'visualMusicState', 'releaseTrackOverride', 'queueScene', 'applyScene', 'createMusicalPatterns']) {
   assert(audio.includes(`${method}(`), `Missing arrangement engine stage: ${method}`);
 }
-for (const section of ['intro', 'groove', 'build', 'open', 'motif', 'break', 'return', 'tail']) {
-  assert(audio.includes(section), `Missing macro arrangement section: ${section}`);
+for (const section of ['intro', 'groove-a', 'groove-b', 'bass-drive', 'synth-build', 'melodic-open', 'break', 'peak-return', 'outro-experiment']) {
+  assert(audio.includes(section), `Missing Scene: ${section}`);
 }
 for (const cultureId of ['chinese', 'western', 'indian', 'northern_andes']) {
   assert(audio.includes(`${cultureId}: {`), `Missing CultureMusicProfile: ${cultureId}`);
@@ -72,9 +77,19 @@ for (const cultureId of ['chinese', 'western', 'indian', 'northern_andes']) {
 for (const stage of ['buildStarEvents', 'topologyGroups', 'drawStarEventVisuals', 'setArrangementMode']) {
   assert(app.includes(`${stage}(`), `Missing grouped composition stage: ${stage}`);
 }
-for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'triggerControlNode', 'ParticleField']) {
+for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'ParticleField', 'launchScene', 'startGuidedLoop']) {
   assert(app.includes(stage), `Missing interactive arrangement/particle stage: ${stage}`);
 }
+for (const method of ['startGuidedLoop', 'beginLoopStage', 'recordLoopInput', 'scheduleLoopPlayback', 'playLoopEvent']) {
+  assert(audio.includes(`${method}(`), `Missing guided Loop stage: ${method}`);
+}
+for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-poly', 'dark-pulse', 'fm-metallic']) {
+  assert(audio.includes(recipe), `Missing stable synth recipe: ${recipe}`);
+}
+assert(!/\['Digit1',\s*'1'\]/.test(app), 'Number keys must not be part of Star keyboard mapping.');
+assert(app.includes("/^Digit[0-9]$/.test(event.code)"), 'Number row Scene mapping is missing.');
+assert(sampleManifest.bundledRecordings === false, 'Sample manifest must not claim bundled recordings.');
+for (const cultureId of ['chinese', 'western', 'indian']) assert(sampleManifest.cultures[cultureId], `Missing sample slots for ${cultureId}.`);
 assert(app.includes('audio.visualMusicState()'), 'Particles must read the shared musical state.');
 assert(audio.includes("new CustomEvent('star-event'"), 'Audio and visual grouped events must share StarEvent timing.');
 for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConnection']) {

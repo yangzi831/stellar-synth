@@ -113,20 +113,30 @@
       </div>
 
       <div class="performance-modes" id="performance-modes" role="toolbar" aria-label="键盘语义 / Keyboard mode" hidden>
-        <span>控制 / CONTROL</span>
+        <span>参与 / PERFORM</span>
         <button class="performance-mode on" data-performance="star">恒星 STAR</button>
-        <button class="performance-mode" data-performance="arrange">编排 ARRANGE</button>
+        <button class="performance-mode" data-performance="loop">循环 LOOP</button>
       </div>
 
-      <div class="track-lanes" id="track-lanes" role="toolbar" aria-label="编排音轨 / Arrangement tracks" hidden>
-        <span>音轨 / TRACK</span>
-        <button class="track-lane on" data-track="drums">鼓 DRUMS</button>
-        <button class="track-lane" data-track="bass">低音 BASS</button>
-        <button class="track-lane" data-track="synth">序列 SYNTH</button>
-        <button class="track-lane" data-track="harmony">和声 HARMONY</button>
-        <button class="track-lane" data-track="lead">旋律 LEAD</button>
-        <button class="track-lane" data-track="texture">纹理 TEXTURE</button>
-        <button id="release-overrides">归还自动 AUTO</button>
+      <div class="scene-launcher" id="scene-launcher" role="toolbar" aria-label="音乐场景 / Music scenes" hidden>
+        <span>场景 / SCENE</span>
+        <button class="scene-button on" data-scene="1">1 INTRO</button>
+        <button class="scene-button" data-scene="2">2 GROOVE A</button>
+        <button class="scene-button" data-scene="3">3 GROOVE B</button>
+        <button class="scene-button" data-scene="4">4 BASS</button>
+        <button class="scene-button" data-scene="5">5 BUILD</button>
+        <button class="scene-button" data-scene="6">6 MELODIC</button>
+        <button class="scene-button" data-scene="7">7 BREAK</button>
+        <button class="scene-button" data-scene="8">8 PEAK</button>
+        <button class="scene-button" data-scene="9">9 OUTRO</button>
+        <button class="scene-button scene-auto" data-scene="0">0 AUTO</button>
+      </div>
+
+      <div class="loop-panel" id="loop-panel" hidden>
+        <span id="loop-stage">引导循环 / GUIDED LOOP</span>
+        <output id="loop-progress">COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE</output>
+        <button id="loop-start">开始录制 START LOOP</button>
+        <button id="loop-clear">清除当前层 CLEAR LAYER</button>
       </div>
 
       <div class="dock" role="toolbar" aria-label="演奏控制 / Playback controls">

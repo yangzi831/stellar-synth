@@ -59,11 +59,18 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .arrangement-modes button { min-height: 28px; padding: 0 8px; color: #747474; font-size: 8px; }
 .arrangement-modes button.on { color: #080808; }
 .performance-modes { position: absolute; left: 20px; bottom: 66px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.7); pointer-events: auto; }
-.performance-modes span, .track-lanes span { padding: 0 7px; color: #555; font-size: 8px; letter-spacing: .08em; }
-.performance-modes button, .track-lanes button { min-height: 28px; padding: 0 8px; color: #747474; font-size: 8px; }
-.performance-modes button.on, .track-lanes button.on { color: #080808; }
+.performance-modes span, .track-lanes span, .scene-launcher span { padding: 0 7px; color: #555; font-size: 8px; letter-spacing: .08em; }
+.performance-modes button, .track-lanes button, .scene-launcher button { min-height: 28px; padding: 0 8px; color: #747474; font-size: 8px; }
+.performance-modes button.on, .track-lanes button.on, .scene-launcher button.on { color: #080808; }
 .track-lanes { position: absolute; left: 20px; bottom: 103px; display: flex; align-items: center; gap: 4px; max-width: calc(100vw - 40px); overflow-x: auto; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.74); pointer-events: auto; }
 .track-lanes button.manual::after { content: ' · M'; color: inherit; }
+.scene-launcher { position: absolute; left: 20px; right: 20px; bottom: 103px; display: flex; align-items: center; gap: 3px; overflow-x: auto; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.76); pointer-events: auto; scrollbar-width: thin; }
+.scene-launcher button { flex: 0 0 auto; white-space: nowrap; }
+.scene-launcher .scene-auto { margin-left: auto; border-color: #3b3b3b; }
+.loop-panel { position: absolute; left: 20px; bottom: 141px; display: grid; grid-template-columns: auto minmax(190px, 1fr) auto auto; align-items: center; gap: 8px; width: min(720px, calc(100vw - 40px)); padding: 7px; border: 1px solid rgba(255,255,255,.13); background: rgba(4,4,4,.88); pointer-events: auto; }
+.loop-panel span { color: #a2a2a2; font-size: 9px; letter-spacing: .08em; }
+.loop-panel output { overflow: hidden; color: #626262; font-size: 8px; letter-spacing: .05em; text-overflow: ellipsis; white-space: nowrap; }
+.loop-panel button { min-height: 28px; font-size: 8px; }
 .dock { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 5px; padding: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(5,5,5,.76); backdrop-filter: blur(12px); pointer-events: auto; }
 .dock .danger { border-color: rgba(255,255,255,.32); }
 .meta-nav { position: absolute; left: 20px; top: 94px; display: flex; gap: 14px; }
@@ -182,6 +189,9 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .arrangement-modes span, .arrangement-modes button { white-space: nowrap; }
   .performance-modes { left: 10px; bottom: 99px; max-width: calc(100vw - 20px); overflow-x: auto; }
   .track-lanes { left: 10px; bottom: 136px; max-width: calc(100vw - 20px); }
+  .scene-launcher { left: 10px; right: 10px; bottom: 136px; }
+  .loop-panel { left: 10px; bottom: 175px; grid-template-columns: 1fr auto; width: calc(100vw - 20px); }
+  .loop-panel output { grid-column: 1 / -1; grid-row: 2; }
   .performance-modes span, .performance-modes button, .track-lanes span, .track-lanes button { white-space: nowrap; }
   .dock button { white-space: nowrap; flex: 0 0 auto; }
   .detail { top: 164px; right: 10px; max-height: calc(100vh - 235px); }
