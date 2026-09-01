@@ -40,6 +40,12 @@ for (const control of ['zoom-in', 'zoom-out', 'reset-view', 'landmark-select', '
 for (const arrangement of ['path', 'group', 'fragment']) {
   assert(html.includes(`data-arrangement="${arrangement}"`), `Missing arrangement mode: ${arrangement}`);
 }
+for (const performance of ['star', 'arrange']) {
+  assert(html.includes(`data-performance="${performance}"`), `Missing keyboard mode: ${performance}`);
+}
+for (const track of ['drums', 'bass', 'synth', 'harmony', 'lead', 'texture']) {
+  assert(html.includes(`data-track="${track}"`), `Missing TrackLane control: ${track}`);
+}
 assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 BPM.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
@@ -54,12 +60,22 @@ for (const method of ['starInstrumentAttack', 'gestureInstrumentTone', 'gestureM
 for (const method of ['triggerStarEvent', 'selectEventVoices', 'profileChord']) {
   assert(audio.includes(`${method}(`), `Missing grouped event audio stage: ${method}`);
 }
+for (const method of ['createTrackLanes', 'queueTrackVariant', 'updateArrangementDirector', 'visualMusicState', 'releaseTrackOverride']) {
+  assert(audio.includes(`${method}(`), `Missing arrangement engine stage: ${method}`);
+}
+for (const section of ['intro', 'groove', 'build', 'open', 'motif', 'break', 'return', 'tail']) {
+  assert(audio.includes(section), `Missing macro arrangement section: ${section}`);
+}
 for (const cultureId of ['chinese', 'western', 'indian', 'northern_andes']) {
   assert(audio.includes(`${cultureId}: {`), `Missing CultureMusicProfile: ${cultureId}`);
 }
 for (const stage of ['buildStarEvents', 'topologyGroups', 'drawStarEventVisuals', 'setArrangementMode']) {
   assert(app.includes(`${stage}(`), `Missing grouped composition stage: ${stage}`);
 }
+for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'triggerControlNode', 'ParticleField']) {
+  assert(app.includes(stage), `Missing interactive arrangement/particle stage: ${stage}`);
+}
+assert(app.includes('audio.visualMusicState()'), 'Particles must read the shared musical state.');
 assert(audio.includes("new CustomEvent('star-event'"), 'Audio and visual grouped events must share StarEvent timing.');
 for (const visual of ['drawGestureVisuals', 'spawnTopologyNode', 'drawLiquidConnection']) {
   assert(app.includes(`${visual}(`), `Missing gesture visual stage: ${visual}`);

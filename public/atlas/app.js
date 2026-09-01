@@ -38,6 +38,10 @@ const state = {
   compareId: 'western',
   mode: 'atlas',
   arrangementMode: 'path',
+  performanceMode: 'star',
+  selectedTrack: 'drums',
+  controlNodes: [],
+  activeControlNode: -1,
   visibleCultureId: 'chinese',
   visibleStarIds: new Set(),
   selected: null,
@@ -87,6 +91,145 @@ function starPoint(star, view = state.view) {
     y: height / 2 - ((star.dec - view.centerDec) / 180) * height * view.zoom + view.panY,
   };
 }
+
+class ParticleField {
+  constructor() {
+    this.particles = [];
+    this.pending = [];
+    this.shocks = [];
+    this.lastAmbient = 0;
+    this.lastHold = new Map();
+    this.maxParticles = window.matchMedia('(max-width: 680px)').matches ? 320 : 880;
+  }
+
+  queue(detail, source = 'track') {
+    this.pending.push({ ...detail, source });
+    if (this.pending.length > 128) this.pending.shift();
+  }
+
+  pointForId(id) {
+    const star = state.stars.get(id) || audio.sequence.find((entry) => entry.id === id);
+    return star ? starPoint(star) : state.selected ? constellationPoint(state.selected) : { x: width / 2, y: height / 2 };
+  }
+
+  spawn(point, count, options = {}) {
+    if (!point) return;
+    const available = Math.max(0, this.maxParticles - this.particles.length);
+    const total = Math.min(count, available);
+    for (let index = 0; index < total; index += 1) {
+      const seed = (options.seed || frame * 31) + index * 17;
+      const angle = visualNoise(seed) * Math.PI * 2;
+      const speed = (options.speed || 18) * (0.35 + visualNoise(seed + 1));
+      this.particles.push({
+        x: point.x, y: point.y,
+        vx: Math.cos(angle) * speed + (options.directionX || 0),
+        vy: Math.sin(angle) * speed + (options.directionY || 0),
+        born: audio.clockSnapshot().now,
+        life: options.life || 1.2,
+        size: options.size || 0.8,
+        alpha: options.alpha || 0.34,
+        motion: options.motion || 'stellar',
+        phase: visualNoise(seed + 2) * Math.PI * 2,
+      });
+    }
+  }
+
+  processEvent(event, musicState) {
+    const ids = event.starIds?.length ? event.starIds : state.controlNodes.slice(0, 3).map((node) => node.step.id);
+    if (event.source === 'star') {
+      const mode = event.mode || event.event?.visualMode || 'path';
+      (event.event?.starIds || ids).forEach((id, index) => {
+        const point = this.pointForId(id);
+        this.spawn(point, mode === 'fragment' ? 5 : mode === 'group' ? 8 : 4, {
+          seed: (event.event?.seed || 1) + index * 101, speed: mode === 'fragment' ? 28 : 17,
+          life: mode === 'group' ? 1.65 : 0.9, size: mode === 'fragment' ? 0.65 : 0.9,
+          motion: musicState.particleMotion,
+        });
+      });
+      return;
+    }
+    ids.slice(0, 4).forEach((id, index) => {
+      const point = this.pointForId(id);
+      if (event.type === 'kick') {
+        this.shocks.push({ x: point.x, y: point.y, born: event.audioTime, intensity: event.intensity });
+        this.spawn(point, 10, { seed: frame + index * 71, speed: 42, life: 0.55, alpha: 0.25, motion: 'radial' });
+      } else if (event.type === 'perc' || event.type === 'glitch') {
+        this.spawn(point, 5, { seed: frame + index * 53, speed: 36, life: 0.38, size: 0.55, alpha: 0.42, motion: musicState.particleMotion });
+      } else if (event.type === 'synth' || event.type === 'lead') {
+        this.spawn(point, event.type === 'lead' ? 9 : 6, { seed: frame + index * 43, speed: 16, life: event.type === 'lead' ? 1.8 : 1.1, directionX: (index % 2 ? -1 : 1) * 14, size: 0.75, motion: musicState.particleMotion });
+      } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture') {
+        this.spawn(point, 4, { seed: frame + index * 37, speed: 6, life: 2.8, size: 0.65, alpha: 0.18, motion: musicState.particleMotion });
+      }
+    });
+  }
+
+  draw() {
+    const musicState = audio.visualMusicState();
+    const now = musicState.now;
+    this.pending.sort((a, b) => a.audioTime - b.audioTime);
+    while (this.pending.length && this.pending[0].audioTime <= now + 0.008) this.processEvent(this.pending.shift(), musicState);
+
+    for (const [id, gesture] of state.gestureVisuals) {
+      const snapshot = audio.interactionSnapshot(id);
+      if (!snapshot?.holding || now - (this.lastHold.get(id) || 0) < 0.085) continue;
+      this.lastHold.set(id, now);
+      this.spawn(starPoint(gesture.step), 2, { seed: gesture.seed + Math.floor(now * 20), speed: 9, life: 1.25, alpha: 0.2, motion: musicState.particleMotion });
+    }
+
+    const ambientRate = 0.18 - musicState.textureEnvelope * 0.09 - musicState.padEnvelope * 0.045;
+    if (state.selected && now - this.lastAmbient > Math.max(0.045, ambientRate)) {
+      this.lastAmbient = now;
+      const stars = constellationStars(state.selected);
+      const star = stars[Math.floor(visualNoise(frame + stars.length) * Math.max(1, stars.length))];
+      if (star) this.spawn(starPoint(star), 1 + Number(musicState.currentSection === 'build'), { seed: frame * 13, speed: 3 + musicState.overallEnergy * 4, life: 2.4 + musicState.padEnvelope, alpha: 0.11, size: 0.5, motion: musicState.particleMotion });
+    }
+
+    const center = state.selected ? constellationPoint(state.selected) : { x: width / 2, y: height / 2 };
+    this.particles = this.particles.filter((particle) => {
+      const age = now - particle.born;
+      if (age >= particle.life) return false;
+      const dt = 1 / 60;
+      const bassBreath = 1 + musicState.bassEnvelope * 0.018;
+      if (particle.motion === 'orbital' && center) {
+        const dx = particle.x - center.x; const dy = particle.y - center.y;
+        particle.vx += -dy * 0.0009; particle.vy += dx * 0.0009;
+      } else if (particle.motion === 'linear') particle.vx += Math.sin(particle.phase + age * 2) * 0.12;
+      else if (particle.motion === 'radial' && center) {
+        particle.vx += (particle.x - center.x) * 0.00012; particle.vy += (particle.y - center.y) * 0.00012;
+      }
+      particle.x = center ? center.x + (particle.x + particle.vx * dt - center.x) * bassBreath : particle.x + particle.vx * dt;
+      particle.y = center ? center.y + (particle.y + particle.vy * dt - center.y) * bassBreath : particle.y + particle.vy * dt;
+      particle.vx *= 0.982; particle.vy *= 0.982;
+      const fade = (1 - age / particle.life) ** 1.35;
+      ctx.fillStyle = `rgba(225,225,225,${particle.alpha * fade})`;
+      ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+      if ((musicState.synthEnvelope > 0.08 || musicState.leadEnvelope > 0.08) && particle.size > 0.6) {
+        ctx.strokeStyle = `rgba(190,190,190,${particle.alpha * fade * 0.22})`;
+        ctx.beginPath(); ctx.moveTo(particle.x, particle.y); ctx.lineTo(particle.x - particle.vx * 0.08, particle.y - particle.vy * 0.08); ctx.stroke();
+      }
+      return particle.x > -80 && particle.x < width + 80 && particle.y > -80 && particle.y < height + 80;
+    });
+    this.shocks = this.shocks.filter((shock) => {
+      const age = now - shock.born;
+      if (age > 0.55) return false;
+      ctx.strokeStyle = `rgba(220,220,220,${(1 - age / 0.55) * 0.11 * shock.intensity})`;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.arc(shock.x, shock.y, 8 + age * 120, 0, Math.PI * 2); ctx.stroke();
+      return true;
+    });
+    if (frame % 20 === 0) {
+      stage.dataset.particles = String(this.particles.length);
+      stage.dataset.section = musicState.currentSection;
+      stage.dataset.energy = musicState.overallEnergy.toFixed(2);
+      stage.dataset.musicCulture = musicState.currentCulture;
+      stage.dataset.particleMotion = musicState.particleMotion;
+    }
+  }
+
+  clear() { this.particles = []; this.pending = []; this.shocks = []; this.lastHold.clear(); }
+}
+
+const particleField = new ParticleField();
 
 function constellationStars(item) {
   return item.stars.map((id) => state.stars.get(id)).filter(Boolean);
@@ -268,6 +411,26 @@ function topologyGroups(item, sequence) {
   return groups;
 }
 
+function extractMusicalControlNodes(item, sequence) {
+  if (!sequence.length) return [];
+  const target = clamp(Math.round(3 + Math.sqrt(sequence.length) * 0.8), 3, 8);
+  const groups = topologyGroups(item, sequence);
+  const picked = [];
+  const seen = new Set();
+  const add = (star, role) => {
+    if (!star || seen.has(star.id) || picked.length >= target) return;
+    seen.add(star.id);
+    picked.push({ step: star, index: sequence.findIndex((entry) => entry.id === star.id), role, controlIndex: picked.length });
+  };
+  groups.filter((group) => group.role === 'branch').forEach((group) => add([...group.stars].sort((a, b) => (a.mag ?? 8) - (b.mag ?? 8))[0], 'branch'));
+  [...sequence].sort((a, b) => (a.mag ?? 8) - (b.mag ?? 8)).slice(0, 3).forEach((star) => add(star, 'bright-anchor'));
+  const center = centroid(item);
+  [...sequence].sort((a, b) => angularDistance(a, center) - angularDistance(b, center)).slice(0, 2).forEach((star) => add(star, 'central'));
+  groups.forEach((group) => add(group.stars[Math.floor(group.stars.length / 2)], group.role));
+  sequence.forEach((star) => add(star, 'line-representative'));
+  return picked;
+}
+
 function buildStarEvents(item, sequence, mode = state.arrangementMode) {
   if (!item || !sequence.length) return [];
   const seed = stableSeed(`${state.visibleCultureId}:${item.id}:${mode}`);
@@ -317,12 +480,44 @@ function buildStarEvents(item, sequence, mode = state.arrangementMode) {
 function setAudioLandmark(item) {
   const sequence = sequenceFor(item);
   const events = buildStarEvents(item, sequence, state.arrangementMode);
+  state.controlNodes = extractMusicalControlNodes(item, sequence);
   audio.setSequence(sequence, {
     cultureId: state.visibleCultureId,
     landmarkId: item?.id,
     kind: item?.kind,
   }, { mode: state.arrangementMode, events });
   state.starEventVisuals = [];
+}
+
+function setPerformanceMode(mode) {
+  if (!['star', 'arrange'].includes(mode)) return;
+  state.performanceMode = mode;
+  $$('.performance-mode').forEach((button) => button.classList.toggle('on', button.dataset.performance === mode));
+  $('#track-lanes').hidden = mode !== 'arrange' || state.mode !== 'play';
+  $('#keyboard-note').textContent = mode === 'star'
+    ? `恒星演奏 / STAR PLAY · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
+    : `编排控制 / ARRANGE · ${state.controlNodes.length} 个拓扑节点 · 选择音轨后量化替换 PATTERN`;
+  $('#status').textContent = mode === 'star'
+    ? 'STAR · 键盘与触摸直接演奏恒星'
+    : `ARRANGE · ${state.selectedTrack.toUpperCase()} · 选择标记节点替换生成策略`;
+}
+
+function selectTrack(trackId) {
+  if (!['drums', 'bass', 'synth', 'harmony', 'lead', 'texture'].includes(trackId)) return;
+  state.selectedTrack = trackId;
+  $$('.track-lane').forEach((button) => button.classList.toggle('on', button.dataset.track === trackId));
+  $('#status').textContent = `ARRANGE · ${trackId.toUpperCase()} · 选择 1–${state.controlNodes.length} / CLICK A CONTROL NODE`;
+}
+
+async function triggerControlNode(controlIndex) {
+  const node = state.controlNodes[controlIndex];
+  if (!node) return;
+  const queued = audio.queueTrackVariant(state.selectedTrack, controlIndex, 'manual');
+  if (!queued) return;
+  if (!audio.running) await audio.start();
+  state.activeStep = node.index;
+  state.activeControlNode = controlIndex;
+  $('#status').textContent = `QUANTIZED · ${state.selectedTrack.toUpperCase()} · VAR ${controlIndex + 1} · ${node.role.toUpperCase()} · AUTO OVERRIDE 8 BARS`;
 }
 
 function setArrangementMode(mode) {
@@ -543,6 +738,8 @@ function setMode(mode) {
   }
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
   $('#arrangement-modes').hidden = mode !== 'play';
+  $('#performance-modes').hidden = mode !== 'play';
+  $('#track-lanes').hidden = mode !== 'play' || state.performanceMode !== 'arrange';
   $('#compare-panel').hidden = mode !== 'compare';
   if (mode === 'compare') {
     state.auto = false;
@@ -724,7 +921,10 @@ function drawStars() {
     }
     ctx.fillStyle = active ? '#ffffff' : selected ? '#eeeeee' : cultural ? '#a0a0a0' : '#626262';
     ctx.fillRect(point.x - radius / 2, point.y - radius / 2, radius, radius);
-    const binding = selected && state.localView ? keyboardBinding(stepIndex) : null;
+    const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.id);
+    const binding = selected && state.localView
+      ? state.performanceMode === 'arrange' ? (controlIndex >= 0 ? keyboardBinding(controlIndex) : null) : keyboardBinding(stepIndex)
+      : null;
     if (binding) {
       ctx.font = '7px ui-monospace, monospace';
       const labelWidth = binding.label.startsWith('⇧') ? 16 : 10;
@@ -738,6 +938,14 @@ function drawStars() {
     if (active) {
       ctx.strokeStyle = 'rgba(242,242,242,.34)';
       ctx.beginPath(); ctx.arc(point.x, point.y, 8 + (frame % 24), 0, Math.PI * 2); ctx.stroke();
+    }
+    if (selected && state.localView && state.performanceMode === 'arrange' && controlIndex >= 0) {
+      ctx.strokeStyle = controlIndex === state.activeControlNode ? 'rgba(242,242,242,.72)' : 'rgba(189,189,189,.34)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.arc(point.x, point.y, 9 + controlIndex * 0.35, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(189,189,189,.55)';
+      ctx.font = '7px ui-monospace, monospace';
+      ctx.fillText(`${state.selectedTrack.toUpperCase()} ${controlIndex + 1}`, point.x + 12, point.y + 3);
     }
   }
 }
@@ -973,6 +1181,7 @@ function draw(now) {
     if (progress >= 1) state.transition = null;
   } else drawCultureLines(state.visibleCultureId, 1, true);
   drawStars();
+  particleField.draw();
   drawStarEventVisuals();
   drawCorridors();
   drawGestureVisuals();
@@ -1013,6 +1222,7 @@ function hitSequenceStar(x, y) {
   if (!state.selected) return null;
   let best = null; let distance = 14;
   for (let i = 0; i < audio.sequence.length; i += 1) {
+    if (state.performanceMode === 'arrange' && !state.controlNodes.some((node) => node.step.id === audio.sequence[i].id)) continue;
     const point = starPoint(audio.sequence[i]);
     const next = Math.hypot(x - point.x, y - point.y);
     if (next < distance) { distance = next; best = { step: audio.sequence[i], index: i, point }; }
@@ -1026,13 +1236,18 @@ stage.addEventListener('pointerdown', (event) => {
   state.pointer = {
     id: event.pointerId, x: event.clientX, y: event.clientY,
     startX: event.clientX, startY: event.clientY, moved: false,
-    playing: Boolean(star), lastStar: null, gestureId: `pointer:${event.pointerId}`,
+    playing: Boolean(star) && state.performanceMode === 'star', arrangeControl: Boolean(star) && state.performanceMode === 'arrange', lastStar: null, gestureId: `pointer:${event.pointerId}`,
   };
   if (star) {
     state.pointer.lastStar = star.step.id;
     state.activeStep = star.index;
-    pressInteractiveStep(star.step, star.index, state.pointer.gestureId);
-    $('#status').textContent = `INSIDE · STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+    if (state.performanceMode === 'arrange') {
+      const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.step.id);
+      triggerControlNode(controlIndex);
+    } else {
+      pressInteractiveStep(star.step, star.index, state.pointer.gestureId);
+      $('#status').textContent = `INSIDE · STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+    }
   }
 });
 
@@ -1062,7 +1277,7 @@ stage.addEventListener('pointermove', (event) => {
 stage.addEventListener('pointerup', (event) => {
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
-  if (!pointer.moved && !pointer.playing) {
+  if (!pointer.moved && !pointer.playing && !pointer.arrangeControl) {
     const item = hitConstellation(event.clientX, event.clientY);
     if (item) {
       if (state.mode === 'play' && state.selected && !state.localView) {
@@ -1198,10 +1413,31 @@ audio.addEventListener('star-event', (event) => {
   const index = audio.sequence.findIndex((step) => step.id === firstId);
   if (index >= 0) state.activeStep = index;
   state.starEventVisuals.push(detail);
+  particleField.queue(detail, 'star');
   $('#arrangement-modes').dataset.profile = detail.profileId;
   $('#arrangement-modes').dataset.eventMode = detail.mode;
   $('#arrangement-modes').dataset.eventSize = String(detail.event.starIds?.length || 0);
   if (state.starEventVisuals.length > 96) state.starEventVisuals.splice(0, state.starEventVisuals.length - 96);
+});
+
+audio.addEventListener('track-event', (event) => particleField.queue(event.detail, 'track'));
+
+audio.addEventListener('arrangement-state', (event) => {
+  const detail = event.detail;
+  $('#performance-modes').dataset.section = detail.currentSection;
+  $$('.track-lane').forEach((button) => {
+    const track = detail.tracks[button.dataset.track];
+    button.classList.toggle('manual', Boolean(track?.manualOverride));
+    button.title = track ? `${track.name}${track.pending != null ? ` → ${track.pending + 1}` : ''}` : '';
+  });
+  if (audio.running && state.performanceMode === 'arrange') {
+    $('#status').textContent = `${detail.currentSection.toUpperCase()} · ARRANGE ${state.selectedTrack.toUpperCase()} · ${detail.manualOverrides.length ? `MANUAL: ${detail.manualOverrides.join(' / ').toUpperCase()}` : 'AUTO DIRECTOR'}`;
+  }
+});
+
+audio.addEventListener('track-change', (event) => {
+  const { trackId, variant, source } = event.detail;
+  if (source === 'manual') $('#status').textContent = `APPLIED · ${trackId.toUpperCase()} VAR ${variant + 1} · QUANTIZED`;
 });
 
 audio.addEventListener('gesture', (event) => {
@@ -1250,6 +1486,7 @@ $('#panic').addEventListener('click', () => {
   state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
+  particleField.clear();
   state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
 });
 $('#fullscreen').addEventListener('click', toggleFullscreen);
@@ -1262,6 +1499,12 @@ document.addEventListener('fullscreenchange', () => {
 
 $$('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
 $$('.arrangement-mode').forEach((button) => button.addEventListener('click', () => setArrangementMode(button.dataset.arrangement)));
+$$('.performance-mode').forEach((button) => button.addEventListener('click', () => setPerformanceMode(button.dataset.performance)));
+$$('.track-lane').forEach((button) => button.addEventListener('click', () => selectTrack(button.dataset.track)));
+$('#release-overrides').addEventListener('click', () => {
+  audio.releaseTrackOverride();
+  $('#status').textContent = 'AUTO DIRECTOR · ALL TRACKS RELEASED';
+});
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
 $('#drawer-close').addEventListener('click', closeDrawer);
@@ -1312,6 +1555,13 @@ $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = tru
 document.addEventListener('keydown', (event) => {
   const editable = event.target.matches?.('input, textarea, select, [contenteditable="true"]');
   if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && $('#launch').hidden && $('#overlay').hidden && $('#drawer').hidden) {
+    if (state.performanceMode === 'arrange' && state.mode === 'play' && state.localView) {
+      const controlIndex = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+      if (controlIndex >= 0 && controlIndex < state.controlNodes.length) {
+        event.preventDefault(); triggerControlNode(controlIndex); return;
+      }
+      if (controlIndex >= 0) return;
+    }
     const index = keyboardStepIndex(event);
     if (index >= 0) {
       event.preventDefault();
