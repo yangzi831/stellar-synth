@@ -423,7 +423,7 @@ export class SequencerAudio extends EventTarget {
     const starts = [];
     const accents = [];
     let cursor = 0;
-    for (const [index, event] of events.slice(0, 64).entries()) {
+    for (const event of events.slice(0, 64)) {
       const position = Math.round(cursor * 4) % 64;
       starts.push(position);
       accents.push(clamp(Number(event.intensity || event.velocity || 0.6), 0.2, 1));
@@ -450,7 +450,6 @@ export class SequencerAudio extends EventTarget {
   createConstellationMotif(sequence = [], identity = {}) {
     if (!sequence.length) return [];
     const seed = hashText(`motif:${identity.cultureId || 'sky'}:${identity.landmarkId || 'landmark'}:${sequence.map((star) => star.id).join(',')}`);
-    const grammar = this.profile.grammar || FALLBACK_CULTURE_PROFILE;
     const length = clamp(4 + Math.floor(Math.sqrt(sequence.length)), 4, 8);
     const stride = 1 + (seed % Math.max(1, Math.min(4, sequence.length - 1)));
     const entries = [];
