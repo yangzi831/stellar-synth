@@ -1479,23 +1479,38 @@ audio.addEventListener('scene-queued', (event) => {
 
 audio.addEventListener('loop-state', (event) => {
   const loop = event.detail;
+  const redoButton = $('#loop-redo');
+  const clearButton = $('#loop-clear');
   if (!loop.active && loop.status === 'idle') {
     $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
     $('#loop-progress').textContent = 'COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE';
+    $('#loop-keys').textContent = '字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE';
+    $('#loop-start').textContent = '开始录制 START LOOP';
+    redoButton.disabled = true;
+    clearButton.disabled = true;
     return;
   }
   const completed = loop.completed.length ? loop.completed.join(' + ').toUpperCase() : 'EMPTY';
-  if (loop.status === 'count-in') {
+  if (!loop.active && loop.status === 'stopped') {
+    $('#loop-stage').textContent = `LOOP STOPPED · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
+    $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO REBUILD`;
+    $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / STOP MUTED AUDIO AND PRESERVED LAYER DATA';
+  } else if (loop.status === 'count-in') {
     $('#loop-stage').textContent = 'COUNT-IN · 1 BAR';
-    $('#loop-progress').textContent = '准备录制 DRUM / PREPARE DRUM';
+    $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'}`;
+    $('#loop-keys').textContent = loop.stage?.keyHint || 'LISTEN TO THE COUNT-IN';
   } else if (loop.status === 'recording') {
-    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS`;
-    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · COMPLETED: ${completed}`;
+    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel}`;
+    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed}`;
+    $('#loop-keys').textContent = loop.stage.keyHint;
   } else if (loop.status === 'full') {
-    $('#loop-stage').textContent = 'FULL LOOP · 6 LAYERS';
-    $('#loop-progress').textContent = `PLAYING: ${completed}`;
-    $('#status').textContent = 'FULL LOOP · 你构建的六层循环正在演奏';
+    $('#loop-stage').textContent = `FULL LOOP · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
+    $('#loop-progress').textContent = `PLAYING: ${completed} · EMPTY STAGES BECOME REST`;
+    $('#loop-keys').textContent = 'REDO 只重录最后一层；其余层继续循环 / REDO LAST LAYER IN PLACE';
+    $('#status').textContent = `FULL LOOP · ${loop.activeLayerCount} 个演奏层 · ${loop.restLayerCount} 个留白层`;
   }
+  redoButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
+  clearButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
 });
 
 audio.addEventListener('track-change', (event) => {
@@ -1567,9 +1582,17 @@ $$('.arrangement-mode').forEach((button) => button.addEventListener('click', () 
 $$('.performance-mode').forEach((button) => button.addEventListener('click', () => setPerformanceMode(button.dataset.performance)));
 $$('.scene-button').forEach((button) => button.addEventListener('click', () => launchScene(Number(button.dataset.scene))));
 $('#loop-start').addEventListener('click', startGuidedLoop);
+$('#loop-redo').addEventListener('click', () => {
+  const snapshot = audio.redoCurrentLoopLayer();
+  $('#status').textContent = snapshot
+    ? `LOOP · COUNT-IN → REDO ${snapshot.stage?.label || 'LAYER'}`
+    : 'LOOP · 暂无可重录层 / NO LAYER TO REDO';
+});
 $('#loop-clear').addEventListener('click', () => {
-  audio.clearCurrentLoopLayer();
-  $('#status').textContent = 'LOOP · CURRENT LAYER CLEARED';
+  const cleared = audio.clearCurrentLoopLayer();
+  $('#status').textContent = cleared
+    ? `LOOP · ${cleared.toUpperCase()} CLEARED → REST`
+    : 'LOOP · 暂无可清除层 / NO LAYER TO CLEAR';
 });
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
@@ -1632,7 +1655,7 @@ document.addEventListener('keydown', (event) => {
         event.preventDefault();
         const keyIndex = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
         const recorded = audio.recordLoopInput(keyIndex);
-        if (recorded) $('#status').textContent = `LOOP INPUT · ${keyboardBinding(keyIndex).label} · QUANTIZED STEP ${recorded.step + 1}`;
+        if (recorded) $('#status').textContent = `LOOP INPUT · ${keyboardBinding(keyIndex).label} · STAR ${recorded.starId || '—'} · STEP ${recorded.step + 1}`;
         return;
       }
     }

@@ -77,12 +77,12 @@ export const CULTURE_SAMPLE_MANIFEST = {
 };
 
 const LOOP_STAGES = [
-  { id: 'drums', label: 'DRUM', bars: 2, grid: 1 },
-  { id: 'bass', label: 'BASS', bars: 4, grid: 2 },
-  { id: 'synth', label: 'SYNTH', bars: 2, grid: 1 },
-  { id: 'harmony', label: 'HARMONY', bars: 4, grid: 4 },
-  { id: 'lead', label: 'LEAD', bars: 4, grid: 2 },
-  { id: 'texture', label: 'TEXTURE', bars: 2, grid: 1 },
+  { id: 'drums', label: 'DRUM', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q KICK · W CLOSED · E OPEN · R CLAP · T PERC · Y GLITCH' },
+  { id: 'bass', label: 'BASS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P STAR BASS · A–L +8VE · Z–M RESPONSE' },
+  { id: 'synth', label: 'SYNTH', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
+  { id: 'harmony', label: 'HARMONY', bars: 4, grid: 4, gridLabel: '1/4', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
+  { id: 'lead', label: 'LEAD', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
+  { id: 'texture', label: 'TEXTURE', bars: 2, grid: 1, gridLabel: '1/16 / FREE', keyHint: 'Q WAVE · W GLITCH · E AIR · R GRAIN · REPEAT ACROSS KEYS' },
 ];
 
 // Culture profiles describe musical organisation, never ethnic instrument skins.
@@ -494,12 +494,17 @@ export class SequencerAudio extends EventTarget {
   loopSnapshot() {
     if (!this.loopSession) return { active: false, status: 'idle', stage: null, completed: [] };
     const session = this.loopSession;
-    const stage = session.stageIndex >= 0 ? LOOP_STAGES[session.stageIndex] : null;
+    const visibleStageIndex = session.status === 'count-in' ? session.pendingStageIndex : session.stageIndex;
+    const stage = visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex] : null;
     const current = Math.max(session.stageStartStep, this.currentTransportStep());
     const length = Math.max(1, session.stageEndStep - session.stageStartStep);
+    const currentLayer = stage ? session.layers.get(stage.id) : null;
     return {
       active: session.active, status: session.status, stage,
-      stageIndex: session.stageIndex, completed: [...session.completed],
+      stageIndex: visibleStageIndex, completed: [...session.completed],
+      resting: [...session.resting], visited: [...session.visited],
+      activeLayerCount: session.completed.length, restLayerCount: session.resting.length,
+      currentLayerEvents: currentLayer?.events.length || 0,
       progress: clamp((current - session.stageStartStep) / length, 0, 1),
       layers: Object.fromEntries([...session.layers].map(([id, layer]) => [id, layer.events.length])),
     };
@@ -519,8 +524,10 @@ export class SequencerAudio extends EventTarget {
     const nextBar = Math.ceil((this.arrangementStep + 1) / GROOVE_STEPS) * GROOVE_STEPS;
     this.loopSession = {
       active: true, status: 'count-in', stageIndex: -1,
+      pendingStageIndex: 0, redoOnly: false,
       stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS,
-      completed: [], layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
+      completed: [], resting: [], visited: [],
+      layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
     };
     this.sceneAuto = false;
     this.dispatchLoopState();
@@ -536,13 +543,38 @@ export class SequencerAudio extends EventTarget {
   }
 
   clearCurrentLoopLayer() {
-    if (!this.loopSession) return;
-    const fallback = this.loopSession.completed.at(-1);
-    const id = LOOP_STAGES[this.loopSession.stageIndex]?.id || fallback;
-    const layer = this.loopSession.layers.get(id);
+    const session = this.loopSession;
+    if (!session) return null;
+    const fallback = session.visited.at(-1) || session.completed.at(-1);
+    const id = LOOP_STAGES[session.stageIndex]?.id || fallback;
+    const layer = session.layers.get(id);
     if (layer) layer.events = [];
-    this.loopSession.completed = this.loopSession.completed.filter((entry) => entry !== id);
+    session.completed = session.completed.filter((entry) => entry !== id);
+    if (id && !session.resting.includes(id)) session.resting.push(id);
     this.dispatchLoopState();
+    return id || null;
+  }
+
+  redoCurrentLoopLayer() {
+    const session = this.loopSession;
+    if (!session?.active || !this.context) return null;
+    const fallback = session.visited.at(-1) || session.completed.at(-1);
+    const targetId = session.status === 'recording' ? LOOP_STAGES[session.stageIndex]?.id : fallback;
+    const targetIndex = LOOP_STAGES.findIndex((stage) => stage.id === targetId);
+    if (targetIndex < 0) return null;
+    const layer = session.layers.get(targetId);
+    layer.events = [];
+    session.completed = session.completed.filter((entry) => entry !== targetId);
+    session.resting = session.resting.filter((entry) => entry !== targetId);
+    session.status = 'count-in';
+    session.stageIndex = -1;
+    session.pendingStageIndex = targetIndex;
+    session.redoOnly = true;
+    const nextBar = Math.ceil((this.currentTransportStep() + 1) / GROOVE_STEPS) * GROOVE_STEPS;
+    session.stageStartStep = nextBar;
+    session.stageEndStep = nextBar + GROOVE_STEPS;
+    this.dispatchLoopState();
+    return this.loopSnapshot();
   }
 
   recordLoopInput(keyIndex) {
@@ -650,6 +682,7 @@ export class SequencerAudio extends EventTarget {
     this.active.clear();
     this.voices = 0;
     this.loopSession = null;
+    this.dispatchLoopState();
     if (this.master && this.context) {
       const now = this.context.currentTime;
       this.master.gain.cancelScheduledValues(now);
@@ -1134,14 +1167,29 @@ export class SequencerAudio extends EventTarget {
         this.samplePerc(time, accent ? 0.02 : 0.011, 0, accent ? 1900 : 2600);
         this.markTrack('drums', time, accent ? 0.9 : 0.52, 'count-in');
       }
-      if (stepNumber >= session.stageEndStep) this.beginLoopStage(0, session.stageEndStep);
+      if (stepNumber >= session.stageEndStep) this.beginLoopStage(session.pendingStageIndex ?? 0, session.stageEndStep);
       return;
     }
     if (session.status === 'recording' && stepNumber >= session.stageEndStep) {
       const stage = LOOP_STAGES[session.stageIndex];
       const layer = session.layers.get(stage.id);
       layer.anchorStep = session.stageStartStep;
-      if (!session.completed.includes(stage.id)) session.completed.push(stage.id);
+      if (!session.visited.includes(stage.id)) session.visited.push(stage.id);
+      if (layer.events.length) {
+        if (!session.completed.includes(stage.id)) session.completed.push(stage.id);
+        session.resting = session.resting.filter((entry) => entry !== stage.id);
+      } else {
+        session.completed = session.completed.filter((entry) => entry !== stage.id);
+        if (!session.resting.includes(stage.id)) session.resting.push(stage.id);
+      }
+      if (session.redoOnly) {
+        session.redoOnly = false;
+        session.pendingStageIndex = -1;
+        session.status = 'full';
+        session.stageIndex = LOOP_STAGES.length;
+        this.dispatchLoopState();
+        return;
+      }
       const nextIndex = session.stageIndex + 1;
       if (nextIndex >= LOOP_STAGES.length) {
         session.status = 'full';
@@ -1158,6 +1206,7 @@ export class SequencerAudio extends EventTarget {
     if (!session || !stage) return;
     session.status = 'recording';
     session.stageIndex = index;
+    session.pendingStageIndex = -1;
     session.stageStartStep = startStep;
     session.stageEndStep = startStep + stage.bars * GROOVE_STEPS;
     const layer = session.layers.get(stage.id);
@@ -1294,7 +1343,8 @@ export class SequencerAudio extends EventTarget {
   playLoopEvent(stageId, event, time, manual = false) {
     const key = event.keyIndex;
     const star = this.sequence[key % Math.max(1, this.sequence.length)] || this.sequence[0];
-    const degree = key % this.profile.mode.length;
+    const degree = this.degreeForStep(star, key);
+    const keyboardRow = key < 10 ? 0 : key < 19 ? 1 : 2;
     if (manual) this.duckForManual(time);
     if (stageId === 'drums') {
       const voice = key % 6;
@@ -1306,7 +1356,11 @@ export class SequencerAudio extends EventTarget {
       else { this.sampleGlitch(time, 0.006, star?.pan ?? 0, this.profile.seed + key); this.markTrack('texture', time, 0.52, 'glitch', [star?.id].filter(Boolean)); }
       return;
     }
-    const note = scaleNote(this.profile.tonic + (stageId === 'bass' ? -12 : 12), degree, this.profile.mode);
+    const rowOctaves = {
+      bass: [0, 12, 0], synth: [12, 24, 0], harmony: [0, 12, -12], lead: [12, 24, 0], texture: [12, 24, 0],
+    };
+    const baseOctave = stageId === 'bass' ? -12 : 0;
+    const note = scaleNote(this.profile.tonic + baseOctave + (rowOctaves[stageId]?.[keyboardRow] || 0), degree, this.profile.mode);
     if (stageId === 'bass') { this.electricBass(note, time, BEAT * 0.65, 0.036); this.markTrack('bass', time, 0.78, 'bass', [star?.id].filter(Boolean)); }
     else if (stageId === 'synth') { this.synthSequenceVoice(note, time, BEAT * 0.42, 0.019, star?.pan ?? 0, this.patterns.synthRecipe, 0.5); this.markTrack('synth', time, 0.68, 'synth-sequence', [star?.id].filter(Boolean)); }
     else if (stageId === 'harmony') { this.pad(this.profileChord(degree), time, BEAT * 2.2, 0.012); this.markTrack('harmony', time, 0.64, this.profile.cultureId === 'indian' ? 'drone' : 'pad', [star?.id].filter(Boolean)); }
