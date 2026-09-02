@@ -80,9 +80,12 @@ for (const stage of ['buildStarEvents', 'topologyGroups', 'drawStarEventVisuals'
 for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'ParticleField', 'launchScene', 'startGuidedLoop']) {
   assert(app.includes(stage), `Missing interactive arrangement/particle stage: ${stage}`);
 }
-for (const method of ['startGuidedLoop', 'beginLoopStage', 'recordLoopInput', 'scheduleLoopPlayback', 'playLoopEvent']) {
+for (const method of ['startGuidedLoop', 'beginLoopStage', 'recordLoopInput', 'scheduleLoopPlayback', 'playLoopEvent', 'redoCurrentLoopLayer']) {
   assert(audio.includes(`${method}(`), `Missing guided Loop stage: ${method}`);
 }
+for (const control of ['loop-keys', 'loop-redo']) assert(html.includes(`id="${control}"`), `Missing guided Loop control: ${control}`);
+assert(audio.includes('resting: []'), 'Guided Loop must preserve empty stages as intentional rests.');
+assert(app.includes('EMPTY STAGES BECOME REST'), 'Guided Loop must explain empty-stage rest behaviour.');
 for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-poly', 'dark-pulse', 'fm-metallic']) {
   assert(audio.includes(recipe), `Missing stable synth recipe: ${recipe}`);
 }
