@@ -168,10 +168,10 @@ class ParticleField {
         this.spawn(point, 7, { seed: frame + index * 61, speed: 43, life: 0.55, size: 0.5, alpha: 0.39, motion: 'radial' });
       } else if (event.type === 'perc' || event.type === 'glitch' || event.type === 'count-in') {
         this.spawn(point, event.type === 'glitch' ? 8 : 5, { seed: frame + index * 53, speed: 36, life: 0.38, size: 0.55, alpha: 0.42, motion: musicState.particleMotion });
-      } else if (event.type === 'synth' || event.type === 'synth-sequence' || event.type === 'lead' || event.type === 'melodic-phrase') {
-        const melodic = event.type === 'lead' || event.type === 'melodic-phrase';
+      } else if (event.type === 'synth' || event.type === 'synth-sequence' || event.type === 'lead' || event.type === 'melodic-phrase' || event.type === 'constellation-motif') {
+        const melodic = event.type === 'lead' || event.type === 'melodic-phrase' || event.type === 'constellation-motif';
         this.spawn(point, melodic ? 9 : 6, { seed: frame + index * 43, speed: 16, life: melodic ? 1.8 : 1.1, directionX: (index % 2 ? -1 : 1) * 14, size: 0.75, motion: musicState.particleMotion });
-      } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture') {
+      } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture' || event.type === 'cosmic-bed' || event.type === 'eclipse-bed') {
         this.spawn(point, 4, { seed: frame + index * 37, speed: 6, life: 2.8, size: 0.65, alpha: 0.18, motion: musicState.particleMotion });
       }
     });
@@ -240,6 +240,8 @@ class ParticleField {
       stage.dataset.section = musicState.currentSection;
       stage.dataset.energy = musicState.overallEnergy.toFixed(2);
       stage.dataset.musicCulture = musicState.currentCulture;
+      stage.dataset.arrangementPhase = musicState.arrangementPhase || 'birth';
+      stage.dataset.motif = musicState.motifSignature || '';
       stage.dataset.particleMotion = musicState.particleMotion;
       stage.dataset.rmsDb = Number.isFinite(toDb(this.meterRms)) ? toDb(this.meterRms).toFixed(1) : '-inf';
       stage.dataset.peakDb = Number.isFinite(toDb(this.meterPeak)) ? toDb(this.meterPeak).toFixed(1) : '-inf';

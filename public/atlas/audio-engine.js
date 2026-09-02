@@ -12,6 +12,12 @@ const EIGHTH = BEAT / 2;
 const SIXTEENTH = BEAT / 4;
 const GROOVE_STEPS = 16;
 const SECTION_A_STEPS = 32;
+const ARRANGEMENT_PHASES = [
+  { id: 'birth', start: 0, end: 32, label: 'BIRTH', next: 'ORBIT' },
+  { id: 'orbit', start: 32, end: 96, label: 'ORBIT', next: 'CONSTELLATION' },
+  { id: 'constellation', start: 96, end: 224, label: 'CONSTELLATION', next: 'ECLIPSE' },
+  { id: 'eclipse', start: 224, end: 288, label: 'ECLIPSE / VARIATION', next: 'BIRTH' },
+];
 const LOOK_AHEAD = 0.13;
 const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
@@ -49,6 +55,7 @@ const AUTO_SCENE_ORDERS = {
   chinese: [1, 2, 3, 4, 6, 5, 7, 8, 9],
   western: [1, 2, 4, 3, 5, 6, 7, 8, 9],
   indian: [1, 2, 3, 6, 4, 5, 7, 8, 9],
+  northern_andes: [1, 3, 2, 4, 6, 5, 7, 8, 9],
   fallback: [1, 2, 3, 4, 5, 6, 7, 8, 9],
 };
 
@@ -214,6 +221,10 @@ export class SequencerAudio extends EventTarget {
     this.patterns = { bass: [], synth: [], lead: [] };
     this.constellationGroove = { starts: [], kick: [], hats: [], open: [], perc: [], bass: [], synth: [], signature: [] };
     this.sectionPhase = 'signature';
+    this.arrangementPhase = 'birth';
+    this.motif = [];
+    this.motifSignature = '';
+    this.lastBedStep = -Infinity;
     this.loopSession = null;
     this.trackEnvelopes = Object.fromEntries(TRACK_IDS.map((id) => [id, { time: -99, amount: 0 }]));
     this.lastArrangementState = null;
@@ -337,8 +348,12 @@ export class SequencerAudio extends EventTarget {
     }));
     this.arrangementMode = composition.mode || 'path';
     this.profile = this.createProfile(this.sequence, identity);
+    this.motif = this.createConstellationMotif(this.sequence, identity);
+    this.motifSignature = this.motif.map((entry) => `${entry.starId}:${entry.degree}:${entry.step}`).join('|');
     this.constellationGroove = this.deriveConstellationGroove(this.events);
     this.sectionPhase = 'signature';
+    this.arrangementPhase = 'birth';
+    this.lastBedStep = -Infinity;
     this.patterns = this.createMusicalPatterns();
     this.createTrackLanes();
     this.currentSection = 'intro';
@@ -388,6 +403,12 @@ export class SequencerAudio extends EventTarget {
       lead: make([3, 9, 15, 22, 29, 35, 41, 47, 55, 61], [0, 1, 4, 2, 1, 0, 4, 2, 1, 0], 4),
       synthRecipe: 'dark-pulse', acousticSlots: ['pluckedString', 'drone', 'percussion'],
     };
+    if (culture === 'northern_andes') return {
+      bass: make([0, 5, 8, 13, 16, 21, 24, 29], [0, 4, 0, 2, 0, 4, 1, 0], 2),
+      synth: make([0, 2, 5, 7, 10, 12, 15, 18, 20, 23, 26, 28], [0, 2, 4, 2, 1, 3, 2, 0], 2),
+      lead: make([3, 9, 15, 22, 27, 35, 41, 48, 55, 61], [0, 2, 4, 2, 1, 3, 2, 0], 4),
+      synthRecipe: 'soft-poly', acousticSlots: ['stellar'],
+    };
     const starDegrees = this.sequence.slice(0, 12).map((star, index) => this.degreeForStep(star, index));
     const degrees = starDegrees.length ? starDegrees : [0, 2, 4, 1];
     return {
@@ -418,6 +439,55 @@ export class SequencerAudio extends EventTarget {
     const bass = unique(starts.filter((_, index) => index % 2 === 0 || accents[index] > 0.78));
     const synth = unique(starts.flatMap((position, index) => [position, position + (index % 3 === 0 ? 3 : 2)]));
     return { starts: unique(starts), kick: safeKick, hats, open, perc, bass, synth, signature: unique(starts.slice(0, 16)) };
+  }
+
+  arrangementPhaseForStep(stepNumber = 0) {
+    const cycle = 288;
+    const phaseStep = ((stepNumber % cycle) + cycle) % cycle;
+    return ARRANGEMENT_PHASES.find((phase) => phaseStep >= phase.start && phaseStep < phase.end) || ARRANGEMENT_PHASES[0];
+  }
+
+  createConstellationMotif(sequence = [], identity = {}) {
+    if (!sequence.length) return [];
+    const seed = hashText(`motif:${identity.cultureId || 'sky'}:${identity.landmarkId || 'landmark'}:${sequence.map((star) => star.id).join(',')}`);
+    const grammar = this.profile.grammar || FALLBACK_CULTURE_PROFILE;
+    const length = clamp(4 + Math.floor(Math.sqrt(sequence.length)), 4, 8);
+    const stride = 1 + (seed % Math.max(1, Math.min(4, sequence.length - 1)));
+    const entries = [];
+    let cursor = 0;
+    const chineseContour = [0, 2, 4, 1, 3, 2, 0, 4];
+    const indianContour = [0, 1, 0, 2, 3, 2, 1, 0];
+    const westernContour = [0, 2, 4, 2, 1, 3, 5, 4];
+    const andesContour = [0, 2, 4, 2, 1, 3, 2, 0];
+    for (let index = 0; index < length; index += 1) {
+      const starIndex = (index * stride + (seed >>> 7) % sequence.length) % sequence.length;
+      const star = sequence[starIndex];
+      const baseDegree = this.degreeForStep(star, starIndex);
+      const contour = identity.cultureId === 'chinese' ? chineseContour
+        : identity.cultureId === 'indian' ? indianContour
+          : identity.cultureId === 'western' ? westernContour : null;
+      const cultureContour = identity.cultureId === 'northern_andes' ? andesContour : contour;
+      const structureBias = star?.mag != null && star.mag < 2.2 && index % 3 === 0 ? 1 : 0;
+      const degree = cultureContour
+        ? (cultureContour[index % cultureContour.length] + structureBias) % this.profile.mode.length
+        : baseDegree;
+      const gap = clamp(Math.round((star.interval || 1) * 2 + unitNoise(seed + index * 19) * 3), 2, 12);
+      if (index > 0) cursor += gap;
+      entries.push({
+        id: `motif-${star.id}-${index}`,
+        starId: star.id,
+        star,
+        index,
+        step: index === 0 ? 0 : cursor % 128,
+        degree,
+        durationBeats: clamp((star.interval || 1) * 0.55, 0.38, 1.6),
+        accent: index === 0 || index % 4 === 0
+          ? 1
+          : clamp(0.68 + (star?.mag != null ? clamp(3.4 - star.mag, 0, 2.4) * 0.06 : 0) + unitNoise(seed + index * 23) * 0.12, 0.68, 0.96),
+        seed: seed + index * 101,
+      });
+    }
+    return entries;
   }
 
   degreeForStep(step, index = 0) {
@@ -645,6 +715,7 @@ export class SequencerAudio extends EventTarget {
     this.dispatchEvent(new CustomEvent('track-event', { detail: {
       trackId, type, audioTime: time, intensity: amount, starIds,
       section: this.currentSection, cultureId: this.profile.cultureId,
+      arrangementPhase: this.arrangementPhase, motifSignature: this.motifSignature,
     } }));
   }
 
@@ -667,6 +738,8 @@ export class SequencerAudio extends EventTarget {
       leadEnvelope: envelopes.lead, currentSection: this.currentSection,
       currentScene: scene.number, currentSceneLabel: scene.label, sceneAuto: this.sceneAuto,
       currentCulture: this.profile.cultureId, currentArrangementMode: this.arrangementMode,
+      arrangementPhase: this.arrangementPhase,
+      motifSignature: this.motifSignature,
       particleMotion: (this.profile.grammar.arrangement || FALLBACK_CULTURE_PROFILE.arrangement).particleMotion,
       activeTracks, manualOverrides: [...this.trackLanes.values()].filter((lane) => lane.manualOverride).map((lane) => lane.id),
       tracks: this.trackSnapshot(),
@@ -696,6 +769,8 @@ export class SequencerAudio extends EventTarget {
     this.nextArrangementTick = this.nextTick;
     this.timelineOrigin = this.nextArrangementTick;
     this.arrangementStep = 0;
+    this.arrangementPhase = 'birth';
+    this.lastBedStep = -Infinity;
     this.timer = window.setInterval(() => this.schedule(), 18);
     this.dispatchEvent(new CustomEvent('state', { detail: { running: true } }));
   }
@@ -742,8 +817,14 @@ export class SequencerAudio extends EventTarget {
       if (this.events.length) {
         const eventIndex = this.eventTick % this.events.length;
         const event = this.events[eventIndex];
+        const eventPhase = this.arrangementPhaseForStep(
+          this.timelineOrigin ? Math.floor((this.nextTick - this.timelineOrigin) / SIXTEENTH) : this.arrangementStep,
+        );
         const starLayerActive = !this.loopSession?.active
-          && (this.sectionPhase === 'signature' || [1, 7, 9].includes(this.currentScene)
+          && (eventPhase.id === 'birth' || this.sectionPhase === 'signature'
+            || eventPhase.id === 'constellation'
+            || [1, 7, 9].includes(this.currentScene)
+            || (eventPhase.id === 'eclipse' && eventIndex % 4 === 0)
             || (this.sectionPhase === 'full' && eventIndex % 3 === 0));
         if (starLayerActive) this.triggerStarEvent(event, eventIndex, this.nextTick);
         const eventBeats = Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
@@ -1150,6 +1231,8 @@ export class SequencerAudio extends EventTarget {
 
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
+    const phase = this.arrangementPhaseForStep(stepNumber);
+    this.arrangementPhase = phase.id;
     this.sectionPhase = stepNumber < SECTION_A_STEPS ? 'signature'
       : stepNumber < SECTION_A_STEPS + 32 ? 'full' : 'variation';
     const cycleStep = stepNumber % GROOVE_STEPS;
@@ -1162,11 +1245,15 @@ export class SequencerAudio extends EventTarget {
     const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
     if (!this.loopSession?.active) {
       const fullLaunch = this.sectionPhase !== 'signature';
-      if (fullLaunch || this.trackIsActive('drums')) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
-      if (fullLaunch || this.trackIsActive('bass')) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
-      if (fullLaunch || this.trackIsActive('synth')) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
-      if (fullLaunch || this.trackIsActive('harmony')) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
-      if (fullLaunch || this.trackIsActive('lead')) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      this.scheduleCosmicBed(stepNumber, time, sourceStep);
+      this.scheduleMotifLane(stepNumber, time);
+      const birth = phase.id === 'birth';
+      const eclipse = phase.id === 'eclipse';
+      if (!birth && !eclipse && (fullLaunch || this.trackIsActive('drums'))) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
+      if (!birth && !eclipse && (fullLaunch || this.trackIsActive('bass'))) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      if (!birth && (fullLaunch || this.trackIsActive('synth'))) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
+      if (!birth && !eclipse && (fullLaunch || this.trackIsActive('harmony'))) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
+      if (!birth && !eclipse && (fullLaunch || this.trackIsActive('lead'))) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
       if (fullLaunch || this.trackIsActive('texture')) this.scheduleTextureLane(cycleStep, cycleIndex, time, nextStep);
     }
     this.scheduleLoopPlayback(stepNumber, time);
@@ -1273,6 +1360,52 @@ export class SequencerAudio extends EventTarget {
     if (culture === 'indian') return { kick: 2, hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2 };
     if (culture === 'northern_andes') return { kick: 3, hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3 };
     return { kick: this.laneVariant('drums'), hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: this.laneVariant('drums') };
+  }
+
+  motifNote(entry, octave = 12) {
+    if (!entry) return this.profile.tonic + octave;
+    const starIndex = Math.max(0, this.sequence.findIndex((star) => star.id === entry.starId));
+    const register = this.profile.grammar.register?.base || 0;
+    return scaleNote(this.profile.tonic + octave + register, entry.degree + (starIndex % 3 === 2 ? 1 : 0), this.profile.mode);
+  }
+
+  scheduleCosmicBed(stepNumber, time, sourceStep) {
+    const phase = this.arrangementPhase;
+    const interval = phase === 'birth' ? 32 : phase === 'orbit' ? 64 : phase === 'constellation' ? 48 : 64;
+    if (stepNumber !== 0 && stepNumber % interval !== 0) return;
+    if (this.lastBedStep === stepNumber) return;
+    this.lastBedStep = stepNumber;
+    const grammar = this.profile.grammar;
+    const motifEntries = this.motif.slice(0, 3);
+    const motifNotes = motifEntries.map((entry, index) => this.motifNote(entry, index === 0 ? -12 : 0));
+    let notes = motifNotes.length ? motifNotes : [this.profile.tonic];
+    if (grammar.voicing === 'tonic-orbit') notes = [this.profile.tonic - 12, this.profile.tonic + 7, ...notes.slice(0, 1)];
+    else if (grammar.voicing === 'open-pentatonic') notes = [notes[0], notes[0] + 7, notes[1] || notes[0] + 12];
+    else if (grammar.voicing === 'modal-vertical') notes = [notes[0], notes[0] + 5, notes[1] || notes[0] + 9];
+    else notes = [...notes, this.profile.tonic + 7];
+    const eclipse = phase === 'eclipse';
+    const duration = BEAT * (eclipse ? 14 : phase === 'birth' ? 18 : 24);
+    const gain = eclipse ? 0.0052 : phase === 'birth' ? 0.008 : 0.0072;
+    const pan = clamp((sourceStep?.pan ?? 0) * (grammar.spatial || 0.6) * 0.45, -0.55, 0.55);
+    this.spaceAtmosphere(notes.slice(0, 3), time, duration, gain, pan);
+    if (!eclipse) this.pad(notes.slice(0, grammar.voicing === 'modal-vertical' ? 3 : 2), time, duration * 0.82, gain * 0.52);
+    this.markTrack('harmony', time, eclipse ? 0.28 : 0.48, eclipse ? 'eclipse-bed' : 'cosmic-bed', motifEntries.map((entry) => entry.starId));
+  }
+
+  scheduleMotifLane(stepNumber, time) {
+    if (!this.motif.length) return;
+    const cycleStep = stepNumber % 128;
+    const entry = this.motif.find((candidate) => candidate.step === cycleStep);
+    if (!entry) return;
+    if (this.arrangementPhase === 'eclipse' && entry.index % 2 === 1) return;
+    const note = this.motifNote(entry, this.profile.cultureId === 'indian' ? 0 : 12);
+    const duration = BEAT * (this.arrangementPhase === 'birth' ? entry.durationBeats * 0.88 : entry.durationBeats);
+    const gain = 0.0155 * entry.accent * (this.arrangementPhase === 'eclipse' ? 0.62 : 1);
+    const star = entry.star;
+    const pan = clamp((star?.pan ?? 0) * (this.profile.grammar.spatial || 0.6), -0.8, 0.8);
+    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, duration * 1.25, gain * 0.82, pan);
+    else this.melodicVoice(note, time, duration, gain, pan);
+    this.markTrack('lead', time, entry.accent, 'constellation-motif', [entry.starId]);
   }
 
   scheduleDrumLane(step, bar, time, sourceStep, nextStep) {
