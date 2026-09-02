@@ -11,6 +11,7 @@ const BEAT = 60 / BPM;
 const EIGHTH = BEAT / 2;
 const SIXTEENTH = BEAT / 4;
 const GROOVE_STEPS = 16;
+const SECTION_A_STEPS = 32;
 const LOOK_AHEAD = 0.13;
 const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
@@ -77,12 +78,12 @@ export const CULTURE_SAMPLE_MANIFEST = {
 };
 
 const LOOP_STAGES = [
-  { id: 'drums', label: 'DRUM', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q KICK · W CLOSED · E OPEN · R CLAP · T PERC · Y GLITCH' },
-  { id: 'bass', label: 'BASS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P STAR BASS · A–L +8VE · Z–M RESPONSE' },
-  { id: 'synth', label: 'SYNTH', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
-  { id: 'harmony', label: 'HARMONY', bars: 4, grid: 4, gridLabel: '1/4', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
-  { id: 'lead', label: 'LEAD', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
-  { id: 'texture', label: 'TEXTURE', bars: 2, grid: 1, gridLabel: '1/16 / FREE', keyHint: 'Q WAVE · W GLITCH · E AIR · R GRAIN · REPEAT ACROSS KEYS' },
+  { id: 'drums', label: 'DRUM', instrument: 'DRUM · GROOVE KIT', bars: 4, grid: 1, gridLabel: '1/16', keyHint: 'Q KICK · W CLOSED · E OPEN · R CLAP · T PERC · Y GLITCH' },
+  { id: 'bass', label: 'BASS', instrument: 'BASS · DEEP SYNTH', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P STAR BASS · A–L +8VE · Z–M RESPONSE' },
+  { id: 'synth', label: 'ARP', instrument: 'ARP · RHYTHMIC PLUCK', bars: 4, grid: 1, gridLabel: '1/16', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
+  { id: 'harmony', label: 'HARMONY', instrument: 'HARMONY · SPACE PAD', bars: 4, grid: 4, gridLabel: '1/4', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
+  { id: 'lead', label: 'MELODY', instrument: 'MELODY · STAR MOTIF', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
+  { id: 'texture', label: 'TEXTURE', instrument: 'TEXTURE · GRANULAR SPACE', bars: 4, grid: 1, gridLabel: '1/16 / FREE', keyHint: 'Q WAVE · W GLITCH · E AIR · R GRAIN · REPEAT ACROSS KEYS' },
 ];
 
 // Culture profiles describe musical organisation, never ethnic instrument skins.
@@ -211,6 +212,8 @@ export class SequencerAudio extends EventTarget {
     this.formBar = 0;
     this.timelineOrigin = 0;
     this.patterns = { bass: [], synth: [], lead: [] };
+    this.constellationGroove = { starts: [], kick: [], hats: [], open: [], perc: [], bass: [], synth: [], signature: [] };
+    this.sectionPhase = 'signature';
     this.loopSession = null;
     this.trackEnvelopes = Object.fromEntries(TRACK_IDS.map((id) => [id, { time: -99, amount: 0 }]));
     this.lastArrangementState = null;
@@ -334,6 +337,8 @@ export class SequencerAudio extends EventTarget {
     }));
     this.arrangementMode = composition.mode || 'path';
     this.profile = this.createProfile(this.sequence, identity);
+    this.constellationGroove = this.deriveConstellationGroove(this.events);
+    this.sectionPhase = 'signature';
     this.patterns = this.createMusicalPatterns();
     this.createTrackLanes();
     this.currentSection = 'intro';
@@ -391,6 +396,28 @@ export class SequencerAudio extends EventTarget {
       lead: make([4, 12, 20, 28, 36, 44, 52, 60], degrees, 4),
       synthRecipe: ['analog-pluck', 'acid-resonant', 'soft-poly', 'dark-pulse'][this.profile.timbre], acousticSlots: ['stellar'],
     };
+  }
+
+  deriveConstellationGroove(events = []) {
+    const starts = [];
+    const accents = [];
+    let cursor = 0;
+    for (const [index, event] of events.slice(0, 64).entries()) {
+      const position = Math.round(cursor * 4) % 64;
+      starts.push(position);
+      accents.push(clamp(Number(event.intensity || event.velocity || 0.6), 0.2, 1));
+      cursor += Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
+    }
+    if (!starts.length) starts.push(0, 6, 11, 14);
+    const unique = (values) => [...new Set(values.map((value) => ((value % 64) + 64) % 64))];
+    const kick = unique(starts.filter((position, index) => accents[index] >= 0.62 && position % 2 === 0));
+    const safeKick = kick.length >= 2 ? kick : unique(starts.filter((_, index) => index % 2 === 0));
+    const hats = unique(starts.flatMap((position) => [position + 2, position + 5].filter((value) => value % 4 !== 0)));
+    const open = unique(starts.filter((_, index) => index % 3 === 1).map((position) => position + 3));
+    const perc = unique(starts.filter((_, index) => index % 2 === 1).map((position) => position + 1));
+    const bass = unique(starts.filter((_, index) => index % 2 === 0 || accents[index] > 0.78));
+    const synth = unique(starts.flatMap((position, index) => [position, position + (index % 3 === 0 ? 3 : 2)]));
+    return { starts: unique(starts), kick: safeKick, hats, open, perc, bass, synth, signature: unique(starts.slice(0, 16)) };
   }
 
   degreeForStep(step, index = 0) {
@@ -499,6 +526,12 @@ export class SequencerAudio extends EventTarget {
     const current = Math.max(session.stageStartStep, this.currentTransportStep());
     const length = Math.max(1, session.stageEndStep - session.stageStartStep);
     const currentLayer = stage ? session.layers.get(stage.id) : null;
+    const relative = Math.max(0, current - session.stageStartStep);
+    const countInBeat = session.status === 'count-in' ? clamp(Math.floor(relative / 4) + 1, 1, 8) : 0;
+    const beatNumber = session.status === 'count-in'
+      ? countInBeat
+      : clamp(Math.floor(relative / 4) + 1, 1, 8);
+    const nextStage = visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex + 1] || null : LOOP_STAGES[0];
     return {
       active: session.active, status: session.status, stage,
       stageIndex: visibleStageIndex, completed: [...session.completed],
@@ -506,6 +539,12 @@ export class SequencerAudio extends EventTarget {
       activeLayerCount: session.completed.length, restLayerCount: session.resting.length,
       currentLayerEvents: currentLayer?.events.length || 0,
       progress: clamp((current - session.stageStartStep) / length, 0, 1),
+      countInBeat, beatNumber, beatTotal: 8,
+      sixteenthStep: Math.max(0, relative),
+      currentStage: stage?.label || null,
+      nextStage: nextStage?.label || null,
+      instrument: stage?.instrument || null,
+      barsRemaining: stage ? Math.max(0, stage.bars - relative / GROOVE_STEPS) : 0,
       layers: Object.fromEntries([...session.layers].map(([id, layer]) => [id, layer.events.length])),
     };
   }
@@ -525,7 +564,7 @@ export class SequencerAudio extends EventTarget {
     this.loopSession = {
       active: true, status: 'count-in', stageIndex: -1,
       pendingStageIndex: 0, redoOnly: false,
-      stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS,
+      stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS * 2,
       completed: [], resting: [], visited: [],
       layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
     };
@@ -572,7 +611,7 @@ export class SequencerAudio extends EventTarget {
     session.redoOnly = true;
     const nextBar = Math.ceil((this.currentTransportStep() + 1) / GROOVE_STEPS) * GROOVE_STEPS;
     session.stageStartStep = nextBar;
-    session.stageEndStep = nextBar + GROOVE_STEPS;
+    session.stageEndStep = nextBar + GROOVE_STEPS * 2;
     this.dispatchLoopState();
     return this.loopSnapshot();
   }
@@ -703,7 +742,9 @@ export class SequencerAudio extends EventTarget {
       if (this.events.length) {
         const eventIndex = this.eventTick % this.events.length;
         const event = this.events[eventIndex];
-        const starLayerActive = !this.loopSession?.active && [1, 7, 9].includes(this.currentScene);
+        const starLayerActive = !this.loopSession?.active
+          && (this.sectionPhase === 'signature' || [1, 7, 9].includes(this.currentScene)
+            || (this.sectionPhase === 'full' && eventIndex % 3 === 0));
         if (starLayerActive) this.triggerStarEvent(event, eventIndex, this.nextTick);
         const eventBeats = Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
         this.nextTick += BEAT * eventBeats;
@@ -998,7 +1039,7 @@ export class SequencerAudio extends EventTarget {
     this.gestureNoise(time, 0.58, 0.0045, 1100, 3.5, panner.pan.value, session.seed + 999);
   }
 
-  triggerStep(step, index, time, emphatic) {
+  triggerStep(step, index, time, emphatic, includeKick = true) {
     if (!step || !this.context || !this.master) return;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.18, 0.92);
@@ -1012,7 +1053,7 @@ export class SequencerAudio extends EventTarget {
     const role = index % 8;
 
     if (role === 0) {
-      this.kick(time, 0.035 + velocity * 0.035);
+      if (includeKick) this.kick(time, 0.035 + velocity * 0.035);
       this.tone(base - 12, time, duration * 1.8, gain * 0.75, 'sine', 1000, pan);
     } else if (role === 1 || role === 5) {
       this.tone(base + 12, time, Math.max(0.045, duration * 0.55), gain, 'triangle', 4200 + velocity * 1800, pan);
@@ -1078,7 +1119,7 @@ export class SequencerAudio extends EventTarget {
       if (this.arrangementMode === 'path') {
         const step = event.stars[0];
         const index = Math.max(0, this.sequence.findIndex((candidate) => candidate.id === step.id));
-        this.triggerStep(step, index, when, false);
+        this.triggerStep(step, index, when, false, false);
       } else {
         const notes = this.selectEventVoices(event);
         const fragment = this.arrangementMode === 'fragment';
@@ -1109,6 +1150,8 @@ export class SequencerAudio extends EventTarget {
 
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
+    this.sectionPhase = stepNumber < SECTION_A_STEPS ? 'signature'
+      : stepNumber < SECTION_A_STEPS + 32 ? 'full' : 'variation';
     const cycleStep = stepNumber % GROOVE_STEPS;
     const cycleIndex = Math.floor(stepNumber / GROOVE_STEPS);
     this.updateLoopSession(stepNumber, time);
@@ -1118,12 +1161,13 @@ export class SequencerAudio extends EventTarget {
     const sourceStep = this.sequence[stepNumber % this.sequence.length];
     const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
     if (!this.loopSession?.active) {
-      if (this.trackIsActive('drums')) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
-      if (this.trackIsActive('bass')) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
-      if (this.trackIsActive('synth')) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
-      if (this.trackIsActive('harmony')) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
-      if (this.trackIsActive('lead')) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
-      if (this.trackIsActive('texture')) this.scheduleTextureLane(cycleStep, cycleIndex, time, nextStep);
+      const fullLaunch = this.sectionPhase !== 'signature';
+      if (fullLaunch || this.trackIsActive('drums')) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
+      if (fullLaunch || this.trackIsActive('bass')) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      if (fullLaunch || this.trackIsActive('synth')) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
+      if (fullLaunch || this.trackIsActive('harmony')) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
+      if (fullLaunch || this.trackIsActive('lead')) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      if (fullLaunch || this.trackIsActive('texture')) this.scheduleTextureLane(cycleStep, cycleIndex, time, nextStep);
     }
     this.scheduleLoopPlayback(stepNumber, time);
   }
@@ -1222,33 +1266,44 @@ export class SequencerAudio extends EventTarget {
 
   laneVariant(trackId) { return this.trackLanes.get(trackId)?.current || 0; }
 
+  drumPalette() {
+    const culture = this.profile.cultureId;
+    if (culture === 'chinese') return { kick: 0, hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0 };
+    if (culture === 'western') return { kick: 1, hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1 };
+    if (culture === 'indian') return { kick: 2, hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2 };
+    if (culture === 'northern_andes') return { kick: 3, hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3 };
+    return { kick: this.laneVariant('drums'), hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: this.laneVariant('drums') };
+  }
+
   scheduleDrumLane(step, bar, time, sourceStep, nextStep) {
     const scene = this.currentScene;
     const culture = this.profile.cultureId;
-    const kickVariant = culture === 'western' ? 1 : culture === 'indian' ? 2 : culture === 'chinese' ? 0 : this.laneVariant('drums');
-    const kicks = scene === 9 ? [0, 8] : [0, 4, 8, 12];
-    if (kicks.includes(step)) {
-      this.technoKick(time, step === 0 ? 0.155 : 0.132, kickVariant);
+    const palette = this.drumPalette();
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    const groove = this.constellationGroove;
+    const signature = this.sectionPhase === 'signature';
+    const kicks = groove.kick.length ? groove.kick : [0, 8];
+    if (!signature && kicks.includes(grooveStep)) {
+      const accent = groove.starts.includes(grooveStep);
+      this.technoKick(time, accent ? 0.155 : 0.118, palette.kick);
       this.pump(time, step === 0 ? 0.43 : 0.5);
-      this.markTrack('drums', time, step === 0 ? 1 : 0.76, 'kick', [sourceStep?.id].filter(Boolean));
+      this.markTrack('drums', time, accent ? 1 : 0.68, 'kick', [sourceStep?.id].filter(Boolean));
     }
-    const dense = scene === 5 || scene === 8;
-    const closed = culture === 'chinese' ? [2, 6, 10, 14]
-      : culture === 'indian' ? [1, 3, 6, 9, 11, 14]
-        : dense ? [1, 3, 5, 7, 9, 11, 13, 15] : [2, 6, 10, 14];
-    if (closed.includes(step)) {
-      this.sampleHat(time, dense ? 0.011 : 0.009, (nextStep?.pan ?? 0) * 0.42);
+    const dense = scene === 5 || scene === 8 || this.sectionPhase === 'variation';
+    const closed = groove.hats.filter((position) => position % 16 === grooveStep % 16);
+    if (closed.length && (!signature || grooveStep % 8 === 2 || grooveStep % 8 === 6)) {
+      this.sampleHat(time, palette.hatGain * (dense ? 1.12 : 0.82), (nextStep?.pan ?? 0) * 0.42);
       this.markTrack('drums', time, 0.36, 'closed-hat', [nextStep?.id].filter(Boolean));
     }
-    const open = culture === 'chinese' ? (dense ? [6, 14] : []) : culture === 'indian' ? [2, 10] : [2, 6, 10, 14];
-    if (open.includes(step) && scene >= 3) {
-      this.sampleOpenHat(time, culture === 'chinese' ? 0.009 : 0.013, (sourceStep?.pan ?? 0) * -0.35);
+    const open = groove.open.filter((position) => position % 16 === grooveStep % 16);
+    if (open.length && !signature && scene >= 2) {
+      this.sampleOpenHat(time, palette.openGain, (sourceStep?.pan ?? 0) * -0.35);
       this.markTrack('drums', time, 0.48, 'open-hat', [sourceStep?.id].filter(Boolean));
     }
-    const perc = culture === 'chinese' ? [7, 15] : culture === 'indian' ? [3, 7, 11, 15] : [4, 12];
-    if (perc.includes(step) && (scene === 3 || scene >= 5)) {
-      if (culture === 'western') this.sampleClap(time, 0.012, sourceStep?.pan ?? 0);
-      else this.samplePerc(time, culture === 'chinese' ? 0.009 : 0.011, sourceStep?.pan ?? 0, culture === 'chinese' ? 4100 : 2200);
+    const perc = groove.perc.filter((position) => position % 16 === grooveStep % 16);
+    if (perc.length && (!signature || grooveStep % 16 === 7 || grooveStep % 16 === 15)) {
+      if (culture === 'western' && !signature) this.sampleClap(time, palette.percGain, sourceStep?.pan ?? 0);
+      else this.samplePerc(time, palette.percGain * (signature ? 0.72 : 1), sourceStep?.pan ?? 0, palette.percFreq);
       this.markTrack('drums', time, 0.54, 'perc', [sourceStep?.id].filter(Boolean));
     }
   }
@@ -1256,6 +1311,8 @@ export class SequencerAudio extends EventTarget {
   scheduleBassLane(step, bar, chordDegree, time, sourceStep) {
     const culture = this.profile.cultureId;
     const patternStep = (bar % 2) * GROOVE_STEPS + step;
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    if (this.sectionPhase === 'signature' && !this.constellationGroove.bass.includes(grooveStep)) return;
     const event = this.patterns.bass.find((entry) => entry.step === patternStep);
     if (!event) return;
     const eightBarPhase = Math.floor(bar / 8);
@@ -1271,6 +1328,8 @@ export class SequencerAudio extends EventTarget {
   scheduleSynthLane(step, bar, chordDegree, time, star) {
     const culture = this.profile.cultureId;
     const patternStep = (bar % 2) * GROOVE_STEPS + step;
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    if (this.sectionPhase === 'signature' && !this.constellationGroove.synth.includes(grooveStep)) return;
     const event = this.patterns.synth.find((entry) => entry.step === patternStep);
     if (!event) return;
     const variation = Math.floor(bar / 8);
@@ -1286,7 +1345,7 @@ export class SequencerAudio extends EventTarget {
   }
 
   scheduleHarmonyLane(step, bar, chordDegree, progressionIndex, time) {
-    if (step !== 0 || (bar !== this.sceneStartedBar && bar % 8 !== 0)) return;
+    if (step !== 0 || (bar !== this.sceneStartedBar && bar % 8 !== 0 && !(this.sectionPhase === 'full' && bar === 2))) return;
     const variant = this.laneVariant('harmony');
     const culture = this.profile.cultureId;
     const duration = BEAT * 4 * 8.2;
@@ -1316,9 +1375,10 @@ export class SequencerAudio extends EventTarget {
 
   scheduleTextureLane(step, bar, time, star) {
     const culture = this.profile.cultureId;
-    if (step === 0 && bar % 8 === 0) {
+    if (step === 0 && bar % 4 === 0 && this.sectionPhase !== 'signature') {
       const note = this.noteForStep(star, bar, culture === 'indian' ? 0 : 12);
       this.sweep(note, time, BEAT * 16, 0.0062, culture === 'chinese' ? 700 : 420, culture === 'western' ? 4400 : 2600, 'sine', (star?.pan ?? 0) * 0.45);
+      this.spaceAtmosphere([this.profile.tonic, this.profile.tonic + 7, note], time, BEAT * 20, 0.0085, (star?.pan ?? 0) * 0.3);
       this.markTrack('texture', time, 0.48, 'texture', [star?.id].filter(Boolean));
     }
     const glitchScene = [5, 7, 8, 9].includes(this.currentScene);
@@ -1636,6 +1696,47 @@ export class SequencerAudio extends EventTarget {
       this.register(air);
       air.start(time, unitNoise(time * 17) * 2); air.stop(time + duration + 0.05);
     }
+  }
+
+  spaceAtmosphere(notes, time, duration, gain = 0.008, pan = 0) {
+    if (!this.context || this.voices >= MAX_VOICES - 5) return;
+    const filter = this.context.createBiquadFilter();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    const grammar = this.profile.grammar;
+    filter.type = 'lowpass'; filter.Q.value = 0.8;
+    filter.frequency.setValueAtTime(280, time);
+    filter.frequency.linearRampToValueAtTime(1250 + this.profile.timbre * 210, time + duration * 0.42);
+    filter.frequency.linearRampToValueAtTime(420, time + duration);
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.exponentialRampToValueAtTime(gain, time + BEAT * 2.4);
+    envelope.gain.setValueAtTime(gain * 0.76, time + duration * 0.66);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    panner.pan.setValueAtTime(clamp(pan, -0.6, 0.6), time);
+    panner.pan.linearRampToValueAtTime(clamp(-pan * 0.65, -0.6, 0.6), time + duration);
+    notes.slice(0, 3).forEach((note, index) => {
+      if (this.voices >= MAX_VOICES) return;
+      const osc = this.context.createOscillator();
+      const partial = this.context.createGain();
+      osc.type = index === 0 ? 'sine' : grammar.voicing === 'tonic-orbit' ? 'triangle' : 'sine';
+      osc.frequency.value = midi(note);
+      osc.detune.value = (index - 1) * (grammar.voicing === 'open-pentatonic' ? 4 : 7);
+      partial.gain.value = index === 0 ? 0.55 : 0.3;
+      osc.connect(partial).connect(filter);
+      this.register(osc); osc.start(time); osc.stop(time + duration + 0.1);
+    });
+    const air = this.context.createBufferSource();
+    const airFilter = this.context.createBiquadFilter();
+    const airGain = this.context.createGain();
+    air.buffer = this.noiseBuffer; air.loop = true;
+    airFilter.type = 'bandpass'; airFilter.frequency.value = 900 + this.profile.timbre * 260; airFilter.Q.value = 0.7;
+    airGain.gain.setValueAtTime(0.0001, time);
+    airGain.gain.exponentialRampToValueAtTime(gain * 0.34, time + BEAT * 1.7);
+    airGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    air.connect(airFilter).connect(airGain).connect(panner);
+    this.register(air); air.start(time, unitNoise(this.profile.seed + time * 13) * 2); air.stop(time + duration + 0.12);
+    filter.connect(envelope).connect(panner);
+    this.connectArrangement(panner, 0.52);
   }
 
   melodicVoice(note, time, duration, gain, pan = 0) {

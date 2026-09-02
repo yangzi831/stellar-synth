@@ -514,12 +514,13 @@ function setPerformanceMode(mode) {
   state.performanceMode = mode;
   $$('.performance-mode').forEach((button) => button.classList.toggle('on', button.dataset.performance === mode));
   $('#loop-panel').hidden = mode !== 'loop' || state.mode !== 'play';
+  $('#loop-performance').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#keyboard-note').textContent = mode === 'star'
     ? `恒星演奏 / STAR PLAY · QWERTY 字母键 · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
     : `引导循环 / GUIDED LOOP · 系统自动带你录制 DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE`;
   $('#status').textContent = mode === 'star'
     ? 'STAR · QWERTY 字母键与触摸直接演奏恒星'
-    : 'LOOP · 点击 START · 1 BAR COUNT-IN · 自动逐层录制';
+    : 'LOOP · 点击 START · 2 BAR / 8 BEAT COUNT-IN · 自动逐层录制';
 }
 
 async function launchScene(number) {
@@ -540,7 +541,7 @@ async function startGuidedLoop() {
   setPerformanceMode('loop');
   const snapshot = await audio.startGuidedLoop();
   $('#loop-start').textContent = '重新录制 RECORD AGAIN';
-  $('#status').textContent = `LOOP · COUNT-IN 1 BAR · ${snapshot.status.toUpperCase()}`;
+  $('#status').textContent = `LOOP · COUNT-IN 8 BEATS · ${snapshot.status.toUpperCase()}`;
 }
 
 async function triggerControlNode(controlIndex) {
@@ -775,6 +776,7 @@ function setMode(mode) {
   $('#performance-modes').hidden = mode !== 'play';
   $('#scene-launcher').hidden = mode !== 'play';
   $('#loop-panel').hidden = mode !== 'play' || state.performanceMode !== 'loop';
+  $('#loop-performance').hidden = mode !== 'play' || state.performanceMode !== 'loop';
   $('#compare-panel').hidden = mode !== 'compare';
   if (mode === 'compare') {
     state.auto = false;
@@ -1481,9 +1483,23 @@ audio.addEventListener('loop-state', (event) => {
   const loop = event.detail;
   const redoButton = $('#loop-redo');
   const clearButton = $('#loop-clear');
+  const performancePanel = $('#loop-performance');
+  const countNumber = $('#loop-count-number');
+  const currentLayer = $('#loop-current-layer');
+  const currentRole = $('#loop-current-role');
+  const nextLayer = $('#loop-next-layer');
+  const beatCells = $$('#loop-beats i');
+  performancePanel.hidden = !loop.active;
+  const beat = Math.max(1, loop.beatNumber || 1);
+  if (countNumber) countNumber.textContent = loop.status === 'count-in' ? `${loop.countInBeat || beat} / ${loop.beatTotal || 8}` : '—';
+  if (currentLayer) currentLayer.textContent = loop.currentStage || (loop.status === 'full' ? 'FULL LOOP' : '—');
+  if (currentRole) currentRole.textContent = loop.instrument || (loop.status === 'full' ? 'ALL LAYERS / 全部演奏层' : '—');
+  if (nextLayer) nextLayer.textContent = loop.nextStage || '—';
+  beatCells.forEach((cell, index) => cell.classList.toggle('active', index === ((beat - 1) % 8)));
+  beatCells.forEach((cell, index) => cell.classList.toggle('current', index === ((loop.sixteenthStep || 0) % 8)));
   if (!loop.active && loop.status === 'idle') {
     $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
-    $('#loop-progress').textContent = 'COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE';
+    $('#loop-progress').textContent = 'COUNT-IN 8 BEATS → DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE';
     $('#loop-keys').textContent = '字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE';
     $('#loop-start').textContent = '开始录制 START LOOP';
     redoButton.disabled = true;
@@ -1496,12 +1512,12 @@ audio.addEventListener('loop-state', (event) => {
     $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO REBUILD`;
     $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / STOP MUTED AUDIO AND PRESERVED LAYER DATA';
   } else if (loop.status === 'count-in') {
-    $('#loop-stage').textContent = 'COUNT-IN · 1 BAR';
-    $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'}`;
+    $('#loop-stage').textContent = `COUNT-IN · 8 BEATS · ${loop.countInBeat || 1}/8`;
+    $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'} · NEXT ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage?.keyHint || 'LISTEN TO THE COUNT-IN';
   } else if (loop.status === 'recording') {
-    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel}`;
-    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed}`;
+    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel} · BEAT ${loop.beatNumber || 1}/8`;
+    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed} · NEXT: ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage.keyHint;
   } else if (loop.status === 'full') {
     $('#loop-stage').textContent = `FULL LOOP · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
