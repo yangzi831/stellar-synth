@@ -21,8 +21,8 @@ const LOOK_AHEAD = 0.13;
 const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
 // One global gain change preserves the finished drum/music/bed balance while
-// lifting every playback and performance path by exactly 50% before dynamics.
-const MASTER_GAIN = 2.85;
+// lifting every playback and performance path by a further 50% before dynamics.
+const MASTER_GAIN = 4.275;
 const MAKEUP_GAIN = 1.75;
 const ARRANGEMENT_GAIN = 1.08;
 const MUSIC_GAIN = 1.34;

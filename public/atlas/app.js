@@ -1473,7 +1473,7 @@ function toggleFullscreen() {
 
 function showOverlay(type) {
   const body = $('#overlay-body');
-  $('#overlay-title').textContent = type === 'about' ? '关于 / ABOUT' : '署名与来源 / CREDITS / SOURCES';
+  $('#overlay-title').textContent = type === 'about' ? '关于 / ABOUT' : '项目与来源 / PROJECT / SOURCES';
   if (type === 'about') {
     body.innerHTML = `
       <h1>ONE SKY,<br>MANY WORLDS</h1>
@@ -1482,8 +1482,8 @@ function showOverlay(type) {
       <p>每个星座或星官都是一个音乐地标：恒星成为音序步骤，星等影响力度，角距离影响时间间隔。Every constellation or asterism is a musical landmark. Stars become steps, apparent magnitude affects velocity, and angular distance affects interval length.</p>
       <h2>非连线结构 / NON-LINE STRUCTURES</h2>
       <p>数据模型保留暗区、地平线门、月宿路径、宫墙、地景对应和时间周期。The data model preserves dark regions, horizon gates, lunar paths, enclosures, landscape correspondences and time cycles.</p>
-      <h2>原作 / ORIGINAL WORK</h2>
-      <p><strong>Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.<br>Original code used and modified under the MIT License.</strong></p>`;
+      <h2>作品 / PROJECT</h2>
+      <p><strong>Stellar Synth 是围绕跨文化星图、实时声音生成与可演奏交互持续独立开发的音画作品。<br>Stellar Synth is an independently developed audiovisual work connecting cross-cultural star maps, real-time synthesis and playable interaction.</strong></p>`;
   } else {
     const entries = state.data.cultures.map((item) => `
       <div class="credit-entry">
@@ -1491,10 +1491,10 @@ function showOverlay(type) {
         <span>${escapeHtml(item.authors || 'Authors listed in upstream description.md')}<br><br>LICENSE: ${escapeHtml(item.license || 'See upstream description.md')}<br>SOURCE: ${escapeHtml(item.sourceFiles.join(' · '))}<br>ILLUSTRATIONS: NOT BUNDLED</span>
       </div>`).join('');
     body.innerHTML = `
-      <h1>CREDITS /<br>SOURCES</h1>
-      <p><strong>Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.<br>Original code used and modified under the MIT License.</strong></p>
+      <h1>PROJECT /<br>SOURCES</h1>
+      <p><strong>Stellar Synth｜星宿频率<br>一件跨文化、生成式、可演奏的音画作品。</strong></p>
       <h2>AUDIO</h2>
-      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>, derived from the D5 v12 runtime and v13 patch. It uses Web Audio oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, synth arpeggios, pads, bass, gain envelopes, stereo panning, delay, reverb and dynamics compression. No WAV, MP3, sample pack or third-party recording is bundled.</p>
+      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>. It uses Web Audio oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, synth arpeggios, pads, bass, gain envelopes, stereo panning, delay, reverb and dynamics compression. No WAV, MP3, sample pack or third-party recording is bundled.</p>
       <h2>ASTRONOMICAL POSITIONS</h2>
       <p>Hipparcos identifiers come from Stellarium sky-culture geometry. J2000-aligned star positions and apparent magnitudes are adapted from the Astronexus HYG Database v4.1 under CC BY-SA 4.0.</p>
       <h2>SKY CULTURES</h2>

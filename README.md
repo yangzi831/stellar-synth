@@ -2,7 +2,7 @@
 
 **Play the Stars Across Cultures / 演奏不同文明眼中的星空**
 
-An independent, local-first web instrument built from **D5 v13 — Sequencer Map** by Ewan Qian / 钱誉文. The original D5 canvas and Web Audio approach is preserved as a local reference build, then extended into an atlas for comparing sky-culture structures over fixed stellar positions.
+An independently developed, local-first audiovisual instrument that turns cross-cultural star-map structures into playable and generative electronic music.
 
 ## 在线试玩 / Live demo
 
@@ -16,7 +16,7 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 
 ## What is included
 
-- A local copy of the D5 v13 baseline, including the v12 runtime and v13 map patch.
+- A preserved third-party reference baseline for license compliance and regression comparison.
 - ATLAS, PLAY and COMPARE modes.
 - COMPARE continuously alternates between the two selected cultures: each side completes a readable musical segment before fixed stars retain their positions, old relations dissolve, and the other culture's matched landmark, lines, labels and sound path take over.
 - Chinese/English interface labels, bilingual culture introductions and local Chinese display names for all 572 loaded constellations/asterisms.
@@ -31,7 +31,7 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 - PLAY now has two clear participation depths. **STAR** preserves direct Press/Hold/Release performance. **LOOP** is a guided looper with a one-bar count-in, then automatically records DRUM (2 bars), BASS (4), SYNTH (2), HARMONY (4), LEAD (4) and TEXTURE (2). Input is quantized per stage, the interface explains each stage's keyboard roles, completed layers immediately repeat, untouched stages become intentional REST layers, and the last/current layer can be re-recorded without restarting the full construction.
 - Bass and synth use deterministic two-bar patterns; lead uses a four-bar phrase; pad/atmosphere evolves over eight bars. Musical mutation is limited to 8-bar omission, cutoff, octave and final-note changes. Glitch is restricted to 8-bar transitions and selected Scene endings.
 - Manual star performance has its own foreground bus, approximately 5.5 dB above the arrangement bus. A star press briefly ducks the automatic background by roughly 3.7 dB with a short recovery, keeping the performed note obvious without stopping the track.
-- The master chain uses a globally raised input stage (50% above the previous mix), gentle compression, makeup gain and a final limiter set near -1 dBFS. This preserves the drum/music/bed balance while making both automatic playback and manual performance more present. A lightweight analyser exposes test-only running RMS and peak diagnostics without driving musical or visual behaviour.
+- The master chain uses a globally raised input stage (a second 50% increase over the previous mix), gentle compression, makeup gain and a final limiter set near -1 dBFS. This preserves the drum/music/bed balance while making both automatic playback and manual performance more present. A lightweight analyser exposes test-only running RMS and peak diagnostics without driving musical or visual behaviour.
 - A bounded Canvas 2D `ParticleField` reads the same `VisualMusicState` as the audio engine. Every four-on-the-floor kick produces a restrained radial impulse; closed hats create tight flicker, open hats create outward sparkles, bass drives field breathing, stable synth gates create directional trails, lead phrases trace their source stars, and pads extend field lifetime. Manual star bursts are larger and longer than automatic events. Chinese, Western and Indian profiles use radial, linear and orbital motion respectively without changing colour.
 - A `CultureMusicProfile` layer now sits above landmark and star identity. Chinese uses open pentatonic spacing and sparse metallic gestures; Western favours modal vertical voicing; Indian Vedic uses a stable tonic/fifth drone and cyclic melodic orbit; Northern Andes uses airy, pulse-oriented pentatonic ostinati and call/response grouping. These four profiles are culture-inspired electronic prototypes, not claims of ethnomusicological reconstruction or ethnic-instrument emulation. The other 11 cultures retain the prior deterministic stellar-modal fallback.
 - 123 BPM Web Audio engine derived from D5, combining a stable techno pulse with constellation-specific bass pockets, memorable motifs, restrained counter gestures and an air-led cosmic bed. The spatial path uses a 58 ms pre-delay plus high-passed, damped convolution so dry attacks remain clear while the tail opens behind them. Six synth recipes—analog pluck, saw sequence, acid-like resonant sequence, soft poly, dark pulse and FM/metallic—remain synthesis-only; no external sample pack or recording is bundled.
@@ -40,7 +40,7 @@ Desktop browser and headphones are recommended. Click `PLAY` once to unlock brow
 - A build-time adapter for Stellarium `index.json` and `description.md` data.
 - Dynamic culture menus grouped by region.
 - Pan, wheel/pinch-style zoom, constellation selection, local landmark views, micro sequencers, route playback, fullscreen, STOP and PANIC.
-- Runtime ABOUT and CREDITS / SOURCES pages.
+- Runtime ABOUT and PROJECT / SOURCES pages.
 - Offline production assets; the demo does not request a remote API.
 
 ## Local preview
@@ -105,9 +105,6 @@ The repository includes the generated browser-ready JSON. The optional 32 MB HYG
 - Constellation stories are shown when the source attaches one; otherwise the culture introduction is used.
 - No upstream illustration is bundled. Illustration-specific licensing would need a separate review before inclusion.
 
-## Credits and licenses
+## Sources and licenses
 
-Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.  
-Original code used and modified under the MIT License.
-
-See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) and [DATA_SOURCES_AND_LICENSES.md](./DATA_SOURCES_AND_LICENSES.md) for source-level details.
+Required third-party code, data provenance and license records are preserved in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) and [DATA_SOURCES_AND_LICENSES.md](./DATA_SOURCES_AND_LICENSES.md).

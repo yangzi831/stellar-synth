@@ -32,7 +32,7 @@ for (const culture of data.cultures) {
   }
 }
 
-for (const label of ['ATLAS', 'PLAY', 'COMPARE', 'AUTO ROUTE', 'FULLSCREEN', 'PANIC']) {
+for (const label of ['ATLAS', 'PLAY', 'COMPARE', 'AUTO ROUTE', 'FULLSCREEN', 'PANIC', 'PROJECT / SOURCES']) {
   assert(html.includes(label), `Missing interface control: ${label}`);
 }
 for (const control of ['zoom-in', 'zoom-out', 'reset-view', 'landmark-select', 'overview']) {
@@ -51,7 +51,8 @@ assert(audio.includes('export const BPM = 123'), 'Audio engine must run at the 1
 assert(audio.includes('const GROOVE_STEPS = 16'), 'Dance groove must use a fixed 4/4 sixteen-step bar.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
-assert(audio.includes('const MASTER_GAIN = 2.85'), 'The 50% raised global output level is missing.');
+assert(audio.includes('const MASTER_GAIN = 4.275'), 'The second 50% global output increase is missing.');
+assert(!app.includes('Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.'), 'Prominent third-party attribution must not dominate the in-product project page.');
 assert(audio.includes('const MAKEUP_GAIN = 1.75'), 'Output makeup stage is missing.');
 assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
 assert(audio.includes('const MUSIC_GAIN = 1.34'), 'Foreground musical arrangement bus is missing.');
