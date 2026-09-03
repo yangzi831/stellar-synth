@@ -21,11 +21,13 @@ const ARRANGEMENT_PHASES = [
 const LOOK_AHEAD = 0.13;
 const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
-const MASTER_GAIN = 1.4;
-const MAKEUP_GAIN = 1.28;
-const ARRANGEMENT_GAIN = 0.92;
-const MANUAL_GAIN = 1.72;
-const BED_GAIN = 0.42;
+const MASTER_GAIN = 1.9;
+const MAKEUP_GAIN = 1.75;
+const ARRANGEMENT_GAIN = 0.94;
+const MUSIC_GAIN = 1.25;
+const DRUM_GAIN = 0.52;
+const MANUAL_GAIN = 1.95;
+const BED_GAIN = 0.16;
 const HOLD_THRESHOLD_MS = 350;
 const TWO_BARS = BEAT * 8;
 const MODES = [
@@ -196,6 +198,9 @@ export class SequencerAudio extends EventTarget {
     this.reverb = null;
     this.reverbReturn = null;
     this.arrangementBus = null;
+    this.musicBus = null;
+    this.musicRoomSend = null;
+    this.drumBus = null;
     this.bedBus = null;
     this.delay = null;
     this.delayFeedback = null;
@@ -278,10 +283,18 @@ export class SequencerAudio extends EventTarget {
     this.arrangementBus = ac.createGain();
     this.arrangementBus.gain.value = ARRANGEMENT_GAIN;
     this.arrangementBus.connect(this.master);
-    this.arrangementBus.connect(this.reverbSend);
+    this.musicBus = ac.createGain();
+    this.musicBus.gain.value = MUSIC_GAIN;
+    this.musicBus.connect(this.arrangementBus);
+    this.musicRoomSend = ac.createGain();
+    this.musicRoomSend.gain.value = 0.18;
+    this.musicBus.connect(this.musicRoomSend).connect(this.reverbSend);
+    this.drumBus = ac.createGain();
+    this.drumBus.gain.value = DRUM_GAIN;
+    this.drumBus.connect(this.arrangementBus);
     this.bedBus = ac.createGain();
     this.bedBus.gain.value = BED_GAIN;
-    this.bedBus.connect(this.arrangementBus);
+    this.bedBus.connect(this.musicBus);
     this.delay = ac.createDelay(1.2);
     this.delay.delayTime.value = BEAT * 0.75;
     this.delayFeedback = ac.createGain();
@@ -577,12 +590,12 @@ export class SequencerAudio extends EventTarget {
     if (!this.arrangementBus || !this.context) return;
     const gain = this.arrangementBus.gain;
     gain.cancelScheduledValues(time);
-    gain.setTargetAtTime(0.56, time, 0.012);
+    gain.setTargetAtTime(0.68, time, 0.012);
     gain.setTargetAtTime(ARRANGEMENT_GAIN, time + 0.12, 0.14);
     if (this.bedBus) {
       const bedGain = this.bedBus.gain;
       bedGain.cancelScheduledValues(time);
-      bedGain.setTargetAtTime(BED_GAIN * 0.48, time, 0.018);
+      bedGain.setTargetAtTime(BED_GAIN * 0.32, time, 0.018);
       bedGain.setTargetAtTime(BED_GAIN, time + 0.18, 0.32);
     }
   }
@@ -598,23 +611,33 @@ export class SequencerAudio extends EventTarget {
     return { rms, peak, rmsDb: db(rms), peakDb: db(peak) };
   }
 
-  loopSnapshot() {
+  loopSnapshot(displayPosition = null) {
     if (!this.loopSession) return { active: false, status: 'idle', stage: null, completed: [] };
     const session = this.loopSession;
     const visibleStageIndex = session.status === 'count-in' ? session.pendingStageIndex : session.stageIndex;
     const stage = visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex] : null;
-    const current = Math.max(session.stageStartStep, this.currentTransportPosition());
+    const livePosition = this.currentTransportPosition();
+    const rememberedPosition = Number.isFinite(session.displayPosition) ? session.displayPosition : -Infinity;
+    const transportPosition = Number.isFinite(displayPosition)
+      ? displayPosition
+      : Math.max(livePosition, rememberedPosition);
+    const current = session.status === 'count-in' ? transportPosition : Math.max(session.stageStartStep, transportPosition);
     const length = Math.max(1, session.stageEndStep - session.stageStartStep);
     const currentLayer = stage ? session.layers.get(stage.id) : null;
     const relative = Math.max(0, current - session.stageStartStep);
-    const countInBeat = session.status === 'count-in' ? clamp(Math.floor(relative / 4) + 1, 1, 8) : 0;
+    const countInBeat = session.status === 'count-in'
+      ? current < session.stageStartStep ? 0 : clamp(Math.floor(relative / 4) + 1, 1, 8)
+      : 0;
     const beatNumber = session.status === 'count-in'
       ? countInBeat
       : clamp(Math.floor(relative / 4) + 1, 1, 16);
-    const nextStage = visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex + 1] || null : LOOP_STAGES[0];
+    const nextStage = session.redoOnly
+      ? { label: 'FULL LOOP' }
+      : visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex + 1] || null : LOOP_STAGES[0];
     return {
       active: session.active, status: session.status, stage,
       stageIndex: visibleStageIndex, completed: [...session.completed],
+      completedLabels: session.completed.map((id) => LOOP_STAGES.find((entry) => entry.id === id)?.label || id.toUpperCase()),
       resting: [...session.resting], visited: [...session.visited],
       activeLayerCount: session.completed.length, restLayerCount: session.resting.length,
       currentLayerEvents: currentLayer?.events.length || 0,
@@ -630,8 +653,20 @@ export class SequencerAudio extends EventTarget {
     };
   }
 
-  dispatchLoopState() {
-    this.dispatchEvent(new CustomEvent('loop-state', { detail: this.loopSnapshot() }));
+  dispatchLoopState(displayPosition = null, audioTime = null) {
+    const session = this.loopSession;
+    const revision = session?.uiRevision ?? 0;
+    const emit = () => {
+      if (session && this.loopSession !== session) return;
+      if (session && session.uiRevision !== revision) return;
+      if (session && Number.isFinite(displayPosition)) {
+        session.displayPosition = Math.max(session.displayPosition ?? -Infinity, displayPosition);
+      }
+      this.dispatchEvent(new CustomEvent('loop-state', { detail: this.loopSnapshot(displayPosition) }));
+    };
+    if (this.context && Number.isFinite(audioTime)) {
+      window.setTimeout(emit, Math.max(0, (audioTime - this.context.currentTime) * 1000));
+    } else emit();
   }
 
   currentTransportStep() {
@@ -648,6 +683,7 @@ export class SequencerAudio extends EventTarget {
     await this.start();
     if (this.loopSession?.status === 'stopped' && this.loopSession.completed.length) {
       const session = this.loopSession;
+      session.uiRevision += 1;
       const nextBar = Math.ceil((this.arrangementStep + 1) / GROOVE_STEPS) * GROOVE_STEPS;
       session.active = true;
       session.status = 'full';
@@ -665,7 +701,9 @@ export class SequencerAudio extends EventTarget {
     this.loopSession = {
       active: true, status: 'count-in', stageIndex: -1,
       pendingStageIndex: 0, redoOnly: false,
+      uiRevision: 0,
       stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS * 2,
+      displayPosition: this.currentTransportPosition(),
       loopOriginStep: null,
       completed: [], resting: [], visited: [],
       layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
@@ -677,6 +715,7 @@ export class SequencerAudio extends EventTarget {
 
   stopGuidedLoop(clear = false) {
     if (!this.loopSession) return;
+    this.loopSession.uiRevision += 1;
     this.loopSession.active = false;
     this.loopSession.status = clear ? 'idle' : 'stopped';
     if (clear) this.loopSession = null;
@@ -686,6 +725,7 @@ export class SequencerAudio extends EventTarget {
   clearCurrentLoopLayer() {
     const session = this.loopSession;
     if (!session) return null;
+    session.uiRevision += 1;
     const fallback = session.visited.at(-1) || session.completed.at(-1);
     const id = LOOP_STAGES[session.stageIndex]?.id || fallback;
     const layer = session.layers.get(id);
@@ -705,6 +745,7 @@ export class SequencerAudio extends EventTarget {
       : session.status === 'recording' ? LOOP_STAGES[session.stageIndex]?.id : fallback;
     const targetIndex = LOOP_STAGES.findIndex((stage) => stage.id === targetId);
     if (targetIndex < 0) return null;
+    session.uiRevision += 1;
     const layer = session.layers.get(targetId);
     layer.events = [];
     session.completed = session.completed.filter((entry) => entry !== targetId);
@@ -714,11 +755,12 @@ export class SequencerAudio extends EventTarget {
     session.pendingStageIndex = targetIndex;
     session.redoOnly = true;
     const current = this.currentTransportPosition();
-    const origin = session.loopOriginStep ?? Math.ceil(current / 64) * 64;
-    const cycles = Math.ceil((current + GROOVE_STEPS * 2 - origin) / 64);
-    const recordStart = origin + Math.max(1, cycles) * 64;
-    session.stageStartStep = recordStart - GROOVE_STEPS * 2;
+    const countInStart = Math.ceil((current + 1) / 4) * 4;
+    const recordStart = countInStart + GROOVE_STEPS * 2;
+    session.pendingOriginStep = recordStart;
+    session.stageStartStep = countInStart;
     session.stageEndStep = recordStart;
+    session.displayPosition = this.currentTransportPosition();
     this.dispatchLoopState();
     return this.loopSnapshot();
   }
@@ -728,6 +770,7 @@ export class SequencerAudio extends EventTarget {
     if (!session?.active || session.status !== 'recording' || session.stageIndex < 0 || !this.context) return null;
     const stage = LOOP_STAGES[session.stageIndex];
     const transportStep = this.currentTransportPosition();
+    if (transportStep < session.stageStartStep || transportStep >= session.stageEndStep) return null;
     const loopLength = stage.bars * GROOVE_STEPS;
     const origin = session.loopOriginStep ?? session.stageStartStep;
     const relative = ((transportStep - origin) % loopLength + loopLength) % loopLength;
@@ -1040,11 +1083,11 @@ export class SequencerAudio extends EventTarget {
 
   prioritizeManualVoices(reserve = 4) {
     if (this.voices < MAX_VOICES - reserve) return;
-    const sources = [...this.active].slice(0, reserve + 2);
+    const required = Math.max(reserve + 2, this.voices - (MAX_VOICES - reserve) + 1);
+    const sources = [...this.active].slice(0, required);
     sources.forEach((source) => {
       try { source.stop(this.context.currentTime + 0.002); } catch { /* source already ended */ }
     });
-    this.voices = Math.max(0, this.voices - sources.length);
   }
 
   async performanceKick() {
@@ -1052,7 +1095,7 @@ export class SequencerAudio extends EventTarget {
     this.prioritizeManualVoices(3);
     const time = this.context.currentTime + 0.004;
     this.duckForManual(time);
-    this.technoKick(time, 0.096, this.drumPalette().kick, 'gesture');
+    this.technoKick(time, 0.034, this.drumPalette().kick, 'gesture');
     this.markTrack('drums', time, 0.96, 'kick', [this.sequence[0]?.id].filter(Boolean));
     return time;
   }
@@ -1070,23 +1113,24 @@ export class SequencerAudio extends EventTarget {
   starInstrumentAttack(step, index, time) {
     this.prioritizeManualVoices(4);
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
-    const velocity = clamp(1.08 - (magnitude + 1.3) / 8.5, 0.52, 0.96);
+    const velocity = clamp(1.12 - (magnitude + 1.3) / 8.5, 0.58, 1);
     const note = this.noteForStep(step, index, 12);
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
     const instrument = Math.abs((Number(step.id) || index) + index * 3 + this.profile.seed) % 5;
-    if (this.voices >= MAX_VOICES - 3) {
-      this.emergencyStarAttack(note, time, 0.034 * velocity, pan);
-      return;
-    }
-    if (instrument === 0) this.gestureInstrumentTone(note, time, 0.82, 0.036 * velocity, pan, 'bell');
-    else if (instrument === 1) this.gestureInstrumentTone(note, time, 0.48, 0.044 * velocity, pan, 'keys');
-    else if (instrument === 2) this.gestureInstrumentTone(note, time, 0.38, 0.035 * velocity, pan, 'synth');
-    else if (instrument === 3) this.gestureInstrumentTone(note - 12, time, 0.55, 0.05 * velocity, pan, 'bass');
-    else this.gestureMallet(note, time, 0.04 * velocity, pan, index + this.profile.seed);
+    if (this.voices >= MAX_VOICES - 3) return this.emergencyStarAttack(note, time, 0.11 * velocity, pan);
+    let sounded = false;
+    if (instrument === 0) sounded = this.gestureInstrumentTone(note, time, 0.82, 0.105 * velocity, pan, 'bell');
+    else if (instrument === 1) sounded = this.gestureInstrumentTone(note, time, 0.48, 0.118 * velocity, pan, 'keys');
+    else if (instrument === 2) sounded = this.gestureInstrumentTone(note, time, 0.38, 0.108 * velocity, pan, 'synth');
+    else if (instrument === 3) sounded = this.gestureInstrumentTone(note - 12, time, 0.55, 0.122 * velocity, pan, 'bass');
+    else sounded = this.gestureMallet(note, time, 0.112 * velocity, pan, index + this.profile.seed);
+    if (!sounded) this.emergencyStarAttack(note, time, 0.11 * velocity, pan);
+    return true;
   }
 
   emergencyStarAttack(note, time, gain, pan) {
-    if (!this.context || this.voices >= MAX_VOICES) return;
+    if (!this.context) return false;
+    this.prioritizeManualVoices(1);
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
     const panner = this.context.createStereoPanner();
@@ -1099,10 +1143,11 @@ export class SequencerAudio extends EventTarget {
     this.connectGesture(panner);
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.24);
+    return true;
   }
 
   gestureInstrumentTone(note, time, duration, gain, pan, instrument) {
-    if (this.voices >= MAX_VOICES - 3) return;
+    if (this.voices >= MAX_VOICES - 3) return false;
     const voices = {
       bell: [['sine', 1, 0.72], ['sine', 2.01, 0.25], ['sine', 3.93, 0.09]],
       keys: [['triangle', 1, 0.68], ['sine', 2, 0.22]],
@@ -1132,10 +1177,11 @@ export class SequencerAudio extends EventTarget {
     });
     filter.connect(envelope).connect(panner);
     this.connectGesture(panner);
+    return true;
   }
 
   gestureMallet(note, time, gain, pan, seed) {
-    if (this.voices >= MAX_VOICES - 1) return;
+    if (this.voices >= MAX_VOICES - 1) return false;
     const oscillator = this.context.createOscillator();
     const resonator = this.context.createBiquadFilter();
     const envelope = this.context.createGain();
@@ -1150,6 +1196,7 @@ export class SequencerAudio extends EventTarget {
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.34);
     this.gestureNoise(time, 0.045, gain * 0.22, midi(note) * 2.4, 11, pan, seed);
+    return true;
   }
 
   gesturePulse(session, time) {
@@ -1400,9 +1447,9 @@ export class SequencerAudio extends EventTarget {
         const accent = stepNumber === session.stageStartStep;
         this.samplePerc(time, accent ? 0.0065 : 0.0038, 0, accent ? 1650 : 2350);
         this.markTrack('drums', time, accent ? 0.9 : 0.52, 'count-in');
-        this.dispatchLoopState();
+        this.dispatchLoopState(stepNumber, time);
       }
-      if (stepNumber >= session.stageEndStep) this.beginLoopStage(session.pendingStageIndex ?? 0, session.stageEndStep);
+      if (stepNumber >= session.stageEndStep) this.beginLoopStage(session.pendingStageIndex ?? 0, session.stageEndStep, time);
       return;
     }
     if (session.status === 'recording' && stepNumber >= session.stageEndStep) {
@@ -1422,20 +1469,20 @@ export class SequencerAudio extends EventTarget {
         session.pendingStageIndex = -1;
         session.status = 'full';
         session.stageIndex = LOOP_STAGES.length;
-        this.dispatchLoopState();
+        this.dispatchLoopState(stepNumber, time);
         return;
       }
       const nextIndex = session.stageIndex + 1;
       if (nextIndex >= LOOP_STAGES.length) {
         session.status = 'full';
         session.stageIndex = LOOP_STAGES.length;
-        this.dispatchLoopState();
-      } else this.beginLoopStage(nextIndex, session.stageEndStep);
+        this.dispatchLoopState(stepNumber, time);
+      } else this.beginLoopStage(nextIndex, session.stageEndStep, time);
     }
-    if (stepNumber % 4 === 0) this.dispatchLoopState();
+    if (stepNumber % 4 === 0) this.dispatchLoopState(stepNumber, time);
   }
 
-  beginLoopStage(index, startStep) {
+  beginLoopStage(index, startStep, audioTime = null) {
     const session = this.loopSession;
     const stage = LOOP_STAGES[index];
     if (!session || !stage) return;
@@ -1444,11 +1491,15 @@ export class SequencerAudio extends EventTarget {
     session.pendingStageIndex = -1;
     session.stageStartStep = startStep;
     session.stageEndStep = startStep + stage.bars * GROOVE_STEPS;
-    if (session.loopOriginStep == null) session.loopOriginStep = startStep;
+    if (session.pendingOriginStep != null) {
+      session.loopOriginStep = session.pendingOriginStep;
+      session.layers.forEach((entry) => { entry.anchorStep = session.pendingOriginStep; });
+      session.pendingOriginStep = null;
+    } else if (session.loopOriginStep == null) session.loopOriginStep = startStep;
     const layer = session.layers.get(stage.id);
     layer.anchorStep = session.loopOriginStep;
     layer.events = [];
-    this.dispatchLoopState();
+    this.dispatchLoopState(startStep, audioTime);
   }
 
   trackIsActive(trackId) {
@@ -1490,7 +1541,7 @@ export class SequencerAudio extends EventTarget {
     else notes = [...notes, this.profile.tonic + 7];
     const eclipse = phase === 'eclipse';
     const duration = BEAT * (eclipse ? 14 : phase === 'birth' ? 18 : 24);
-    const gain = eclipse ? 0.003 : phase === 'birth' ? 0.0046 : 0.004;
+    const gain = eclipse ? 0.0024 : phase === 'birth' ? 0.0036 : 0.0032;
     const pan = clamp((sourceStep?.pan ?? 0) * (grammar.spatial || 0.6) * 0.45, -0.55, 0.55);
     this.spaceAtmosphere(notes.slice(0, grammar.voicing === 'modal-vertical' ? 3 : 2), time, duration, gain, pan);
     this.markTrack('harmony', time, eclipse ? 0.28 : 0.48, eclipse ? 'eclipse-bed' : 'cosmic-bed', motifEntries.map((entry) => entry.starId));
@@ -1522,8 +1573,8 @@ export class SequencerAudio extends EventTarget {
     const kicks = groove.kick.length ? groove.kick : [0, 8];
     if (!signature && kicks.includes(grooveStep)) {
       const accent = groove.starts.includes(grooveStep);
-      this.technoKick(time, accent ? 0.105 : 0.082, palette.kick);
-      this.pump(time, step === 0 ? 0.43 : 0.5);
+      this.technoKick(time, accent ? 0.064 : 0.048, palette.kick);
+      this.pump(time, step === 0 ? 0.72 : 0.78);
       this.markTrack('drums', time, accent ? 1 : 0.68, 'kick', [sourceStep?.id].filter(Boolean));
     }
     const dense = scene === 5 || scene === 8 || this.sectionPhase === 'variation';
@@ -1557,7 +1608,7 @@ export class SequencerAudio extends EventTarget {
     if (culture === 'western') degree += chordDegree;
     if (event.index === this.patterns.bass.length - 1 && eightBarPhase % 2 === 1) degree += culture === 'indian' ? 1 : 2;
     const note = scaleNote(this.profile.tonic - 12, degree, this.profile.mode);
-    const gain = this.currentScene === 4 || this.currentScene === 8 ? 0.04 : culture === 'indian' ? 0.031 : 0.035;
+    const gain = this.currentScene === 4 || this.currentScene === 8 ? 0.045 : culture === 'indian' ? 0.036 : 0.04;
     this.electricBass(note, time, BEAT * (culture === 'chinese' ? 0.82 : 0.58), gain * event.accent);
     this.markTrack('bass', time, 0.78, 'bass', [sourceStep?.id].filter(Boolean));
   }
@@ -1577,7 +1628,7 @@ export class SequencerAudio extends EventTarget {
     const note = scaleNote(this.profile.tonic + octave, degree, this.profile.mode);
     const build = this.currentScene === 5 ? clamp(this.sectionBar / 7, 0, 1) : 0.35;
     const recipe = culture === 'western' && this.currentScene === 5 ? 'acid-resonant' : this.patterns.synthRecipe;
-    this.synthSequenceVoice(note, time, BEAT * 0.42, 0.018 * event.accent, event.star?.pan ?? star?.pan ?? 0, recipe, build);
+    this.synthSequenceVoice(note, time, BEAT * 0.42, 0.022 * event.accent, event.star?.pan ?? star?.pan ?? 0, recipe, build);
     this.markTrack('synth', time, 0.64, 'synth-sequence', [event.star?.id || star?.id].filter(Boolean));
   }
 
@@ -1591,7 +1642,7 @@ export class SequencerAudio extends EventTarget {
       const root = scaleNote(this.profile.tonic, chordDegree, this.profile.mode);
       notes = [root, root + 7, root + 12].slice(0, variant === 0 ? 2 : 3);
     } else if (culture === 'indian') notes = [this.profile.tonic - 12, this.profile.tonic, this.profile.tonic + 7];
-    this.pad(notes, time, duration, culture === 'indian' ? 0.0135 : culture === 'western' ? 0.0115 : 0.0105 + variant * 0.0004);
+    this.pad(notes, time, duration, culture === 'indian' ? 0.015 : culture === 'western' ? 0.0135 : 0.0125 + variant * 0.0004);
     this.markTrack('harmony', time, this.currentSection === 'open' ? 0.82 : 0.58, culture === 'indian' ? 'drone' : 'pad', this.sequence.slice(0, 3).map((star) => star.id));
   }
 
@@ -1604,9 +1655,9 @@ export class SequencerAudio extends EventTarget {
     if (event.index === this.patterns.lead.length - 1 && phraseCycle % 2 === 1) degree += 1;
     const note = scaleNote(this.profile.tonic + 12, degree, this.profile.mode);
     const sourceStar = event.star || star;
-    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.7, 0.018, sourceStar?.pan ?? 0);
-    else if (event.index % 3 === 0) this.acousticFallback(note, time, BEAT * 1.15, 0.018, sourceStar?.pan ?? 0, this.patterns.acousticSlots[event.index % this.patterns.acousticSlots.length]);
-    else this.melodicVoice(note, time, BEAT * 1.5, 0.017, sourceStar?.pan ?? 0);
+    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.7, 0.022, sourceStar?.pan ?? 0);
+    else if (event.index % 3 === 0) this.acousticFallback(note, time, BEAT * 1.15, 0.022, sourceStar?.pan ?? 0, this.patterns.acousticSlots[event.index % this.patterns.acousticSlots.length]);
+    else this.melodicVoice(note, time, BEAT * 1.5, 0.021, sourceStar?.pan ?? 0);
     this.markTrack('lead', time, 0.76, 'melodic-phrase', [sourceStar?.id].filter(Boolean));
   }
 
@@ -1646,7 +1697,7 @@ export class SequencerAudio extends EventTarget {
     if (manual) this.duckForManual(time);
     if (stageId === 'drums') {
       const voice = event.role === 'kick' ? 0 : event.role === 'hat' ? 1 : key % 6;
-      if (voice === 0) { this.technoKick(time, 0.1, this.drumPalette().kick); this.markTrack('drums', time, 0.92, 'kick', [star?.id].filter(Boolean)); }
+      if (voice === 0) { this.technoKick(time, 0.052, this.drumPalette().kick); this.markTrack('drums', time, 0.92, 'kick', [star?.id].filter(Boolean)); }
       else if (voice === 1) { this.sampleHat(time, 0.0135, star?.pan ?? 0); this.markTrack('drums', time, 0.48, 'closed-hat', [star?.id].filter(Boolean)); }
       else if (voice === 2) { this.sampleOpenHat(time, 0.014, star?.pan ?? 0); this.markTrack('drums', time, 0.5, 'open-hat', [star?.id].filter(Boolean)); }
       else if (voice === 3) { this.sampleClap(time, 0.013, star?.pan ?? 0); this.markTrack('drums', time, 0.58, 'perc', [star?.id].filter(Boolean)); }
@@ -1659,12 +1710,12 @@ export class SequencerAudio extends EventTarget {
     };
     const baseOctave = stageId === 'bass' ? -12 : 0;
     const note = scaleNote(this.profile.tonic + baseOctave + (rowOctaves[stageId]?.[keyboardRow] || 0), degree, this.profile.mode);
-    if (stageId === 'bass') { this.electricBass(note, time, BEAT * 0.65, 0.036); this.markTrack('bass', time, 0.78, 'bass', [star?.id].filter(Boolean)); }
-    else if (stageId === 'synth') { this.synthSequenceVoice(note, time, BEAT * 0.42, 0.019, star?.pan ?? 0, this.patterns.synthRecipe, 0.5); this.markTrack('synth', time, 0.68, 'synth-sequence', [star?.id].filter(Boolean)); }
-    else if (stageId === 'harmony') { this.pad(this.profileChord(degree), time, BEAT * 2.2, 0.012); this.markTrack('harmony', time, 0.64, this.profile.cultureId === 'indian' ? 'drone' : 'pad', [star?.id].filter(Boolean)); }
+    if (stageId === 'bass') { this.electricBass(note, time, BEAT * 0.65, 0.043); this.markTrack('bass', time, 0.78, 'bass', [star?.id].filter(Boolean)); }
+    else if (stageId === 'synth') { this.synthSequenceVoice(note, time, BEAT * 0.42, 0.024, star?.pan ?? 0, this.patterns.synthRecipe, 0.5); this.markTrack('synth', time, 0.68, 'synth-sequence', [star?.id].filter(Boolean)); }
+    else if (stageId === 'harmony') { this.pad(this.profileChord(degree), time, BEAT * 2.2, 0.015); this.markTrack('harmony', time, 0.64, this.profile.cultureId === 'indian' ? 'drone' : 'pad', [star?.id].filter(Boolean)); }
     else if (stageId === 'lead') {
-      if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.3, 0.019, star?.pan ?? 0);
-      else this.acousticFallback(note, time, BEAT * 0.9, 0.019, star?.pan ?? 0, this.patterns.acousticSlots[key % this.patterns.acousticSlots.length]);
+      if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.3, 0.024, star?.pan ?? 0);
+      else this.acousticFallback(note, time, BEAT * 0.9, 0.024, star?.pan ?? 0, this.patterns.acousticSlots[key % this.patterns.acousticSlots.length]);
       this.markTrack('lead', time, 0.76, 'melodic-phrase', [star?.id].filter(Boolean));
     } else if (stageId === 'texture') {
       if (key % 2) this.sampleGlitch(time, 0.005, star?.pan ?? 0, this.profile.seed + key);
@@ -1674,7 +1725,7 @@ export class SequencerAudio extends EventTarget {
   }
 
   connectArrangement(node, delayAmount = 0) {
-    node.connect(this.arrangementBus);
+    node.connect(this.musicBus || this.arrangementBus);
     if (delayAmount > 0 && this.delay) {
       const send = this.context.createGain();
       send.gain.value = delayAmount;
@@ -1682,11 +1733,20 @@ export class SequencerAudio extends EventTarget {
     }
   }
 
+  connectPercussion(node, roomAmount = 0.025) {
+    node.connect(this.drumBus || this.arrangementBus);
+    if (roomAmount > 0 && this.reverbSend) {
+      const send = this.context.createGain();
+      send.gain.value = roomAmount;
+      node.connect(send).connect(this.reverbSend);
+    }
+  }
+
   pump(time, depth = 0.36) {
-    if (!this.arrangementBus) return;
-    const gain = this.arrangementBus.gain;
+    if (!this.musicBus) return;
+    const gain = this.musicBus.gain;
     gain.setValueAtTime(depth, time);
-    gain.exponentialRampToValueAtTime(ARRANGEMENT_GAIN, time + BEAT * 0.58);
+    gain.exponentialRampToValueAtTime(MUSIC_GAIN, time + BEAT * 0.58);
   }
 
   sampleHat(time, gain = 0.012, pan = 0, route = 'arrangement') {
@@ -1701,7 +1761,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
     panner.pan.value = clamp(pan, -0.75, 0.75);
     source.connect(highpass).connect(envelope).connect(panner);
-    if (route === 'gesture') panner.connect(this.gestureBus); else this.connectArrangement(panner, 0.04);
+    if (route === 'gesture') panner.connect(this.gestureBus); else this.connectPercussion(panner, 0.018);
     this.register(source);
     source.start(time, unitNoise(time * 37) * 2.6, 0.055); source.stop(time + 0.06);
   }
@@ -1719,7 +1779,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.24);
     panner.pan.value = clamp(pan, -0.75, 0.75);
     source.connect(highpass).connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.08);
+    this.connectPercussion(panner, 0.025);
     this.register(source);
     source.start(time, unitNoise(time * 43) * 2.5, 0.26); source.stop(time + 0.27);
   }
@@ -1738,7 +1798,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.085);
     panner.pan.value = clamp(pan, -0.8, 0.8);
     oscillator.connect(band).connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.1);
+    this.connectPercussion(panner, 0.03);
     this.register(oscillator); oscillator.start(time); oscillator.stop(time + 0.1);
   }
 
@@ -1755,7 +1815,7 @@ export class SequencerAudio extends EventTarget {
       envelope.gain.exponentialRampToValueAtTime(0.0001, when + 0.075 + hit * 0.018);
       panner.pan.value = clamp(pan + (hit - 1) * 0.08, -0.8, 0.8);
       source.connect(band).connect(envelope).connect(panner);
-      this.connectArrangement(panner, 0.16);
+      this.connectPercussion(panner, 0.04);
       this.register(source);
       source.start(when, unitNoise(when * 71 + hit) * 2.7, 0.13); source.stop(when + 0.14);
     }
@@ -1941,11 +2001,11 @@ export class SequencerAudio extends EventTarget {
     const grammar = this.profile.grammar;
     const bedNotes = [...new Set(notes.slice(0, 3))];
     const voices = bedNotes.flatMap((note, index) => {
-      const octave = index === 0 ? -12 : 0;
-      const spread = grammar.voicing === 'open-pentatonic' ? 4 : 7;
+      const octave = index === 0 ? -24 : index === 1 ? -12 : 0;
+      const spread = grammar.voicing === 'open-pentatonic' ? 5 : 8;
       return [
-        { note: note + octave, type: 'sine', detune: -spread, pan: -0.48 + pan * 0.24, level: index === 0 ? 0.17 : 0.13 },
-        { note: note + octave + (index === 0 ? 12 : 0), type: 'triangle', detune: spread, pan: 0.48 + pan * 0.24, level: index === 0 ? 0.11 : 0.1 },
+        { note: note + octave, type: 'sine', detune: -spread, pan: -0.58 + pan * 0.2, level: index === 0 ? 0.22 : 0.13 },
+        { note: note + octave + 12, type: 'sawtooth', detune: spread, pan: 0.58 + pan * 0.2, level: index === 0 ? 0.035 : 0.028 },
       ];
     }).slice(0, 6);
     voices.forEach((voice, index) => {
@@ -1959,19 +2019,19 @@ export class SequencerAudio extends EventTarget {
       oscillator.frequency.value = midi(voice.note);
       oscillator.detune.setValueAtTime(voice.detune, time);
       oscillator.detune.linearRampToValueAtTime(-voice.detune * 0.7, time + duration);
-      highpass.type = 'highpass'; highpass.frequency.value = index < 2 ? 58 : 110;
-      lowpass.type = 'lowpass'; lowpass.Q.value = 0.38;
-      lowpass.frequency.setValueAtTime(520 + index * 90, time);
-      lowpass.frequency.linearRampToValueAtTime(1100 + this.profile.timbre * 130, time + duration * 0.46);
-      lowpass.frequency.linearRampToValueAtTime(620, time + duration);
+      highpass.type = 'highpass'; highpass.frequency.value = index < 2 ? 48 : 96;
+      lowpass.type = 'lowpass'; lowpass.Q.value = 0.18;
+      lowpass.frequency.setValueAtTime(340 + index * 55, time);
+      lowpass.frequency.linearRampToValueAtTime(720 + this.profile.timbre * 90, time + duration * 0.48);
+      lowpass.frequency.linearRampToValueAtTime(390, time + duration);
       envelope.gain.setValueAtTime(0.0001, time);
-      envelope.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * voice.level), time + BEAT * (3.2 + index * 0.18));
-      envelope.gain.setValueAtTime(Math.max(0.0002, gain * voice.level * 0.72), time + duration * 0.68);
+      envelope.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * voice.level), time + BEAT * (4.8 + index * 0.22));
+      envelope.gain.setValueAtTime(Math.max(0.0002, gain * voice.level * 0.62), time + duration * 0.68);
       envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       panner.pan.setValueAtTime(clamp(voice.pan, -0.72, 0.72), time);
       panner.pan.linearRampToValueAtTime(clamp(-voice.pan * 0.62, -0.72, 0.72), time + duration);
       oscillator.connect(highpass).connect(lowpass).connect(envelope).connect(panner);
-      this.connectBed(panner, 0.24);
+      this.connectBed(panner, 0.34);
       this.register(oscillator); oscillator.start(time); oscillator.stop(time + duration + 0.12);
     });
     if (this.voices < MAX_VOICES) {
@@ -1981,15 +2041,15 @@ export class SequencerAudio extends EventTarget {
       const airGain = this.context.createGain();
       const panner = this.context.createStereoPanner();
       air.buffer = this.noiseBuffer; air.loop = true;
-      highpass.type = 'highpass'; highpass.frequency.value = 1100;
-      lowpass.type = 'lowpass'; lowpass.frequency.value = 5200;
+      highpass.type = 'highpass'; highpass.frequency.value = 1450;
+      lowpass.type = 'lowpass'; lowpass.frequency.value = 4600;
       airGain.gain.setValueAtTime(0.0001, time);
-      airGain.gain.exponentialRampToValueAtTime(gain * 0.045, time + BEAT * 4);
-      airGain.gain.setValueAtTime(gain * 0.035, time + duration * 0.72);
+      airGain.gain.exponentialRampToValueAtTime(gain * 0.032, time + BEAT * 6);
+      airGain.gain.setValueAtTime(gain * 0.024, time + duration * 0.72);
       airGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       panner.pan.setValueAtTime(-0.32, time); panner.pan.linearRampToValueAtTime(0.32, time + duration);
       air.connect(highpass).connect(lowpass).connect(airGain).connect(panner);
-      this.connectBed(panner, 0.32);
+      this.connectBed(panner, 0.42);
       this.register(air); air.start(time, unitNoise(this.profile.seed + time * 13) * 2); air.stop(time + duration + 0.12);
     }
   }
@@ -2073,7 +2133,7 @@ export class SequencerAudio extends EventTarget {
     body.frequency.exponentialRampToValueAtTime(recipe.end + 6, time + recipe.pitchDecay);
     body.frequency.exponentialRampToValueAtTime(recipe.end, time + recipe.decay * 0.8);
     body.connect(bodyEnvelope);
-    if (route === 'gesture') bodyEnvelope.connect(this.gestureBus); else bodyEnvelope.connect(this.arrangementBus);
+    if (route === 'gesture') bodyEnvelope.connect(this.gestureBus); else bodyEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(body); body.start(time); body.stop(time + recipe.decay + 0.03);
 
     const punch = this.context.createOscillator();
@@ -2085,7 +2145,7 @@ export class SequencerAudio extends EventTarget {
     punchEnvelope.gain.setValueAtTime(gain * recipe.punch, time);
     punchEnvelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.115);
     punch.connect(punchFilter).connect(punchEnvelope);
-    if (route === 'gesture') punchEnvelope.connect(this.gestureBus); else punchEnvelope.connect(this.arrangementBus);
+    if (route === 'gesture') punchEnvelope.connect(this.gestureBus); else punchEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(punch); punch.start(time); punch.stop(time + 0.13);
 
     const click = this.context.createBufferSource();
@@ -2096,7 +2156,7 @@ export class SequencerAudio extends EventTarget {
     clickEnvelope.gain.setValueAtTime(gain * recipe.click, time);
     clickEnvelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
     click.connect(clickFilter).connect(clickEnvelope);
-    if (route === 'gesture') clickEnvelope.connect(this.gestureBus); else clickEnvelope.connect(this.arrangementBus);
+    if (route === 'gesture') clickEnvelope.connect(this.gestureBus); else clickEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(click); click.start(time, unitNoise(time * 313) * 2.8, 0.025); click.stop(time + 0.027);
   }
 
@@ -2165,7 +2225,7 @@ export class SequencerAudio extends EventTarget {
     source.start(time); source.stop(time + duration + 0.03);
   }
 
-  kick(time, gain = 0.08, destination = this.master) {
+  kick(time, gain = 0.08, destination = null) {
     if (this.voices >= MAX_VOICES) return;
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
@@ -2173,7 +2233,7 @@ export class SequencerAudio extends EventTarget {
     oscillator.frequency.exponentialRampToValueAtTime(43, time + 0.11);
     envelope.gain.setValueAtTime(gain, time);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
-    oscillator.connect(envelope).connect(destination);
+    oscillator.connect(envelope).connect(destination || this.drumBus || this.master);
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.18);
   }

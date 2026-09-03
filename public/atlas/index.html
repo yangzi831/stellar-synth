@@ -138,15 +138,22 @@
         <span id="loop-stage">引导循环 / GUIDED LOOP</span>
         <output id="loop-progress">COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE</output>
         <button id="loop-start">开始录制 START LOOP</button>
-        <select id="loop-redo-layer" aria-label="选择重录层 / Select layer to redo">
-          <option value="drums">DRUM</option><option value="bass">BASS</option><option value="synth">ARP</option>
-          <option value="harmony">HARMONY</option><option value="lead">MELODY</option><option value="texture">TEXTURE</option>
-        </select>
-        <button id="loop-redo" disabled>重录本层 REDO</button>
-        <button id="loop-clear" disabled>清除当前层 CLEAR LAYER</button>
+        <div class="loop-redo-controls" id="loop-redo-controls" hidden>
+          <select id="loop-redo-layer" aria-label="选择重录层 / Select layer to redo">
+            <option value="drums">DRUM</option><option value="bass">BASS</option><option value="synth">ARP</option>
+            <option value="harmony">HARMONY</option><option value="lead">MELODY</option><option value="texture">TEXTURE</option>
+          </select>
+          <button id="loop-redo" disabled>重录 REDO</button>
+        </div>
         <button id="loop-stop">停止 STOP</button>
-        <button id="loop-panic" class="danger">清空 PANIC</button>
         <button id="loop-exit">退出循环 EXIT LOOP</button>
+        <details class="loop-more">
+          <summary>更多 MORE</summary>
+          <div>
+            <button id="loop-clear" disabled>清除当前层 CLEAR LAYER</button>
+            <button id="loop-panic" class="danger">清空全部 PANIC</button>
+          </div>
+        </details>
         <output id="loop-keys">字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE</output>
       </div>
 
@@ -165,12 +172,20 @@
         <div class="performance-keys"><b>Q — KICK</b><b>W — HI-HAT</b><span>E–P · A–L · Z–M — STARS</span></div>
       </div>
 
-      <div class="dock" role="toolbar" aria-label="演奏控制 / Playback controls">
-        <button id="auto">自动路径 AUTO ROUTE</button>
-        <button id="guide" class="on">引导开启 GUIDE ON</button>
-        <button id="fullscreen">全屏 FULLSCREEN</button>
-        <button id="panic" class="danger">紧急停止 PANIC</button>
+      <div class="performance-hit" id="performance-hit" hidden aria-live="polite">
+        <strong id="performance-hit-key">E</strong>
+        <span id="performance-hit-role">STAR · HIP —</span>
       </div>
+
+      <details class="dock" aria-label="次要工具 / Secondary tools">
+        <summary>工具 TOOLS</summary>
+        <div role="toolbar" aria-label="演奏控制 / Playback controls">
+          <button id="auto">自动路径 AUTO ROUTE</button>
+          <button id="guide" class="on">引导开启 GUIDE ON</button>
+          <button id="fullscreen">全屏 FULLSCREEN</button>
+          <button id="panic" class="danger">紧急停止 PANIC</button>
+        </div>
+      </details>
 
       <footer class="meta-nav">
         <button class="text-button" data-overlay="about">关于 ABOUT</button>

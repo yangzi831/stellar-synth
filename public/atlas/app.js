@@ -66,6 +66,7 @@ const state = {
   compareTimer: null,
   detailCollapsed: false,
   lastCountInBeat: 0,
+  performanceHitTimer: null,
 };
 
 let width = 0;
@@ -296,11 +297,26 @@ function keyboardBinding(index) {
 function keyboardStepIndex(event) {
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return -1;
-  const index = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
-  return index < audio.sequence.length ? index : -1;
+  return base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
 }
 
-async function pressInteractiveStep(step, index, id) {
+function showPerformanceHit(key, role, kind = 'star') {
+  const feedback = $('#performance-hit');
+  if (!feedback) return;
+  if (state.performanceHitTimer) window.clearTimeout(state.performanceHitTimer);
+  $('#performance-hit-key').textContent = key;
+  $('#performance-hit-role').textContent = role;
+  feedback.dataset.kind = kind;
+  feedback.hidden = false;
+  feedback.animate([
+    { opacity: 0.12, transform: 'translate(-50%, -50%) scale(.72)' },
+    { opacity: 1, transform: 'translate(-50%, -50%) scale(1.04)', offset: 0.34 },
+    { opacity: 0.78, transform: 'translate(-50%, -50%) scale(1)' },
+  ], { duration: 420, easing: 'ease-out' });
+  state.performanceHitTimer = window.setTimeout(() => { feedback.hidden = true; }, 620);
+}
+
+async function pressInteractiveStep(step, index, id, keyLabel = 'STAR') {
   const previousRequest = state.gestureRequests.get(id);
   if (previousRequest) previousRequest.released = true;
   audio.release(id, true);
@@ -319,6 +335,7 @@ async function pressInteractiveStep(step, index, id) {
     nodes: [{ x: 0, y: 0, parent: -1, secondaryParent: -1, bornAt: snapshot.pressedAt, scale: 1 }],
   };
   state.gestureVisuals.set(id, gesture);
+  showPerformanceHit(keyLabel, `STAR · HIP ${step.id}`, 'star');
   if (request.released) audio.release(id, false);
 }
 
@@ -552,8 +569,14 @@ async function startGuidedLoop() {
     }
   } else if (!state.localView) await enterLandmark(state.selected, false);
   setPerformanceMode('loop');
+  const existing = audio.loopSnapshot();
+  if (existing.active && ['count-in', 'recording', 'full'].includes(existing.status)) {
+    $('#status').textContent = existing.status === 'full'
+      ? 'LOOP · 所有已录层正在循环 / ALL ACTIVE LAYERS PLAYING'
+      : `LOOP · ${existing.currentStage || existing.status.toUpperCase()} · 录制进行中`;
+    return;
+  }
   const snapshot = await audio.startGuidedLoop();
-  $('#loop-start').textContent = '重新录制 RECORD AGAIN';
   $('#status').textContent = `LOOP · COUNT-IN 8 BEATS · ${snapshot.status.toUpperCase()}`;
 }
 
@@ -1508,12 +1531,20 @@ audio.addEventListener('loop-state', (event) => {
   const currentRole = $('#loop-current-role');
   const nextLayer = $('#loop-next-layer');
   const redoLayer = $('#loop-redo-layer');
+  const redoControls = $('#loop-redo-controls');
+  const startButton = $('#loop-start');
   const currentBeatCells = $$('#loop-current-beats i');
   const nextBeatCells = $$('#loop-next-beats i');
   performancePanel.hidden = state.performanceMode !== 'loop' || state.mode !== 'play';
+  performancePanel.dataset.status = loop.status;
   const beat = Math.max(1, loop.status === 'full' ? loop.loopBeat || 1 : loop.beatNumber || 1);
   $('#loop-count-in').hidden = loop.status !== 'count-in';
-  if (countNumber) countNumber.textContent = loop.status === 'count-in' ? String(loop.countInBeat || beat) : '—';
+  if (countNumber) {
+    countNumber.textContent = loop.status === 'count-in'
+      ? loop.countInBeat ? String(loop.countInBeat) : 'READY'
+      : '—';
+    countNumber.dataset.ready = String(loop.status === 'count-in' && !loop.countInBeat);
+  }
   if (loop.status === 'count-in' && loop.countInBeat && loop.countInBeat !== state.lastCountInBeat) {
     state.lastCountInBeat = loop.countInBeat;
     countNumber?.animate([
@@ -1537,12 +1568,16 @@ audio.addEventListener('loop-state', (event) => {
     $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
     $('#loop-progress').textContent = 'COUNT-IN 8 BEATS → DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE';
     $('#loop-keys').textContent = '字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE';
-    $('#loop-start').textContent = '开始录制 START LOOP';
+    startButton.hidden = false;
+    startButton.textContent = '开始录制 START LOOP';
+    redoControls.hidden = true;
     redoButton.disabled = true;
     clearButton.disabled = true;
     return;
   }
-  const completed = loop.completed.length ? loop.completed.join(' + ').toUpperCase() : 'EMPTY';
+  const completed = loop.completedLabels?.length ? loop.completedLabels.join(' + ') : 'EMPTY';
+  startButton.hidden = loop.active;
+  redoControls.hidden = !loop.completed.length || loop.status === 'count-in';
   if (redoLayer) {
     [...redoLayer.options].forEach((option) => { option.disabled = !loop.completed.includes(option.value) && option.value !== loop.stage?.id; });
     if (redoLayer.selectedOptions[0]?.disabled) redoLayer.value = loop.completed.at(-1) || loop.stage?.id || 'drums';
@@ -1551,9 +1586,12 @@ audio.addEventListener('loop-state', (event) => {
     $('#loop-stage').textContent = `LOOP STOPPED · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
     $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO RESUME`;
     $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / START 可从同一 16 拍起点恢复';
-    $('#loop-start').textContent = '恢复循环 RESUME LOOP';
+    startButton.hidden = false;
+    startButton.textContent = '恢复循环 RESUME LOOP';
   } else if (loop.status === 'count-in') {
-    $('#loop-stage').textContent = `COUNT-IN · 8 BEATS · ${loop.countInBeat || 1}/8`;
+    $('#loop-stage').textContent = loop.countInBeat
+      ? `COUNT-IN · 8 BEATS · ${loop.countInBeat}/8`
+      : 'COUNT-IN · READY';
     $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'} · NEXT ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage?.keyHint || 'LISTEN TO THE COUNT-IN';
   } else if (loop.status === 'recording') {
@@ -1731,6 +1769,7 @@ document.addEventListener('keydown', async (event) => {
         const recorded = audio.recordLoopInput(role === 'kick' ? 0 : 1, { role, audition: false });
         if (recorded) $('#status').textContent = `${role === 'kick' ? 'Q — KICK' : 'W — HI-HAT'} · QUANTIZED STEP ${recorded.step + 1}`;
       } else $('#status').textContent = role === 'kick' ? 'Q — KICK' : 'W — HI-HAT';
+      showPerformanceHit(role === 'kick' ? 'Q' : 'W', role === 'kick' ? 'KICK · 1 BEAT GRID' : 'HI-HAT · 1/2 BEAT GRID', role);
       return;
     }
     if (state.performanceMode === 'loop' && state.mode === 'play' && state.localView) {
@@ -1739,20 +1778,27 @@ document.addEventListener('keydown', async (event) => {
         event.preventDefault();
         const keyIndex = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
         const recorded = audio.recordLoopInput(keyIndex);
-        if (recorded) $('#status').textContent = `LOOP INPUT · ${keyboardBinding(keyIndex).label} · STAR ${recorded.starId || '—'} · STEP ${recorded.step + 1}`;
-        return;
+        if (recorded) {
+          const label = keyboardBinding(keyIndex).label;
+          const loop = audio.loopSnapshot();
+          $('#status').textContent = `LOOP INPUT · ${label} · STAR ${recorded.starId || '—'} · STEP ${recorded.step + 1}`;
+          showPerformanceHit(label, `${loop.stage?.label || 'LAYER'} · HIP ${recorded.starId || '—'} · STEP ${recorded.step + 1}`, 'star');
+          return;
+        }
       }
     }
-    const index = keyboardStepIndex(event);
-    if (index >= 0) {
+    const requestedIndex = keyboardStepIndex(event);
+    if (requestedIndex >= 0 && audio.sequence.length) {
       event.preventDefault();
+      const index = requestedIndex % audio.sequence.length;
       const step = audio.sequence[index];
-      state.keyboardHeld.add(index);
+      const binding = keyboardBinding(requestedIndex);
+      state.keyboardHeld.add(event.code);
       state.activeStep = index;
       const gestureId = `key:${event.code}:${event.shiftKey ? 1 : 0}`;
       state.keyboardGestureIds.set(event.code, gestureId);
-      pressInteractiveStep(step, index, gestureId);
-      $('#status').textContent = `键盘演奏 / KEYBOARD · ${keyboardBinding(index).label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
+      pressInteractiveStep(step, index, gestureId, binding.label);
+      $('#status').textContent = `键盘演奏 / KEYBOARD · ${binding.label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
       return;
     }
   }
@@ -1778,8 +1824,7 @@ document.addEventListener('keyup', (event) => {
   const gestureId = state.keyboardGestureIds.get(event.code);
   if (gestureId) releaseInteractiveStep(gestureId);
   state.keyboardGestureIds.delete(event.code);
-  state.keyboardHeld.delete(base);
-  state.keyboardHeld.delete(base + KEYBOARD_STEPS.length);
+  state.keyboardHeld.delete(event.code);
   if (!audio.running && state.keyboardHeld.size === 0) state.activeStep = -1;
 });
 

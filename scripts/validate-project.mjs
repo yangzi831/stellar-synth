@@ -51,11 +51,14 @@ assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 B
 assert(audio.includes('const GROOVE_STEPS = 16'), 'Dance groove must use a fixed 4/4 sixteen-step bar.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
-assert(audio.includes('const MASTER_GAIN = 1.4'), 'Raised master level is missing.');
-assert(audio.includes('const MAKEUP_GAIN = 1.28'), 'Output makeup stage is missing.');
+assert(audio.includes('const MASTER_GAIN = 1.9'), 'Raised master level is missing.');
+assert(audio.includes('const MAKEUP_GAIN = 1.75'), 'Output makeup stage is missing.');
 assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
-assert(audio.includes('const MANUAL_GAIN = 1.72'), 'Foreground ManualPerformanceBus level is missing.');
-assert(audio.includes('const BED_GAIN = 0.42'), 'Subtle Cosmic Bed bus level is missing.');
+assert(audio.includes('const MUSIC_GAIN = 1.25'), 'Foreground musical arrangement bus is missing.');
+assert(audio.includes('const DRUM_GAIN = 0.52'), 'Controlled drum bus level is missing.');
+assert(audio.includes('this.musicBus.connect(this.musicRoomSend).connect(this.reverbSend)'), 'Music ambience must not force drums through the global reverb send.');
+assert(audio.includes('const MANUAL_GAIN = 1.95'), 'Foreground ManualPerformanceBus level is missing.');
+assert(audio.includes('const BED_GAIN = 0.16'), 'Subtle Cosmic Bed bus level is missing.');
 assert(audio.includes('createOscillator'), 'Synthesis oscillator path is missing.');
 assert(audio.includes('const HOLD_THRESHOLD_MS = 350'), 'The 350ms hold threshold is missing.');
 assert(audio.includes('const TWO_BARS = BEAT * 8'), 'Two-bar parameter cadence is missing.');
@@ -84,7 +87,7 @@ for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'Partic
 for (const method of ['startGuidedLoop', 'beginLoopStage', 'recordLoopInput', 'scheduleLoopPlayback', 'playLoopEvent', 'redoCurrentLoopLayer']) {
   assert(audio.includes(`${method}(`), `Missing guided Loop stage: ${method}`);
 }
-for (const method of ['currentTransportPosition', 'performanceKick', 'performanceHat', 'prioritizeManualVoices', 'connectBed']) {
+for (const method of ['currentTransportPosition', 'performanceKick', 'performanceHat', 'prioritizeManualVoices', 'connectBed', 'connectPercussion']) {
   assert(audio.includes(`${method}(`), `Missing v0.5 playability stage: ${method}`);
 }
 for (const control of ['loop-keys', 'loop-redo', 'loop-redo-layer', 'loop-stop', 'loop-panic', 'loop-exit']) {
@@ -95,9 +98,18 @@ assert(html.includes('id="loop-entry"'), 'Primary LOOP entry is missing.');
 assert(html.includes('Q — KICK') && html.includes('W — HI-HAT'), 'Stable Q/W rhythm controls are missing.');
 assert(!app.includes("['KeyQ', 'Q']") && !app.includes("['KeyW', 'W']"), 'Q/W must not remain in the Star keyboard mapping.');
 assert(app.includes("event.code === 'KeyQ'") && app.includes("event.code === 'KeyW'"), 'Global Q/W rhythm keyboard handlers are missing.');
+assert(app.includes('requestedIndex % audio.sequence.length'), 'Every displayed Star key must wrap to an audible star.');
+assert(app.includes('showPerformanceHit('), 'Immediate performance feedback overlay is missing.');
 assert(audio.includes("options.role === 'kick' ? 4"), 'Kick quantization must use a one-beat grid.');
 assert(audio.includes("options.role === 'hat' ? 2"), 'Hi-hat quantization must use a half-beat grid.');
 assert(audio.includes('session.loopOriginStep'), 'Guided Loop layers must share one transport origin.');
+assert(audio.includes('dispatchLoopState(stepNumber, time)'), 'Loop UI must read the same scheduled transport step as audio.');
+assert(audio.includes('session.displayPosition'), 'Loop UI must keep scheduled transport display monotonic while recording.');
+assert(audio.includes('(audioTime - this.context.currentTime) * 1000'), 'Loop UI changes must be dispatched at the audible Web Audio time.');
+assert(audio.includes('transportStep < session.stageStartStep'), 'Guided Loop must reject input from the scheduler look-ahead window.');
+assert(audio.includes('session.pendingOriginStep = recordStart'), 'REDO must schedule a prompt shared bar-zero restart.');
+assert(audio.includes('session.uiRevision !== revision'), 'Stale scheduled Loop UI events must not overwrite STOP/REDO state.');
+assert(audio.includes('completedLabels:'), 'Loop UI must expose user-facing layer names.');
 assert(audio.includes('resting: []'), 'Guided Loop must preserve empty stages as intentional rests.');
 assert(app.includes('EMPTY STAGES BECOME REST'), 'Guided Loop must explain empty-stage rest behaviour.');
 for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-poly', 'dark-pulse', 'fm-metallic']) {

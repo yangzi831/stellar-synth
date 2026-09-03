@@ -70,7 +70,7 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .scene-launcher { position: absolute; left: 20px; right: 20px; bottom: 103px; display: flex; align-items: center; gap: 3px; overflow-x: auto; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.76); pointer-events: auto; scrollbar-width: thin; }
 .scene-launcher button { flex: 0 0 auto; white-space: nowrap; }
 .scene-launcher .scene-auto { margin-left: auto; border-color: #3b3b3b; }
-.loop-panel { position: absolute; left: 50%; bottom: 24px; z-index: 8; display: grid; grid-template-columns: auto minmax(170px, 1fr) repeat(5, auto); align-items: center; gap: 8px; width: min(940px, calc(100vw - 40px)); padding: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(4,4,4,.92); transform: translateX(-50%); pointer-events: auto; }
+.loop-panel { position: absolute; left: 50%; bottom: 24px; z-index: 8; display: grid; grid-template-columns: auto minmax(190px, 1fr) repeat(4, auto); align-items: center; gap: 8px; width: min(900px, calc(100vw - 40px)); padding: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(4,4,4,.94); transform: translateX(-50%); pointer-events: auto; }
 .loop-panel span { color: #a2a2a2; font-size: 9px; letter-spacing: .08em; }
 .loop-panel output { overflow: hidden; color: #626262; font-size: 8px; letter-spacing: .05em; text-overflow: ellipsis; white-space: nowrap; }
 .loop-panel #loop-keys { grid-column: 1 / -1; color: #777; }
@@ -78,12 +78,18 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .loop-panel select { height: 28px; padding: 0 24px 0 8px; border: 1px solid #292929; border-radius: 0; background: #070707; color: #888; font: 8px ui-monospace, monospace; }
 .loop-panel button:disabled { color: #343434; cursor: default; }
 .loop-panel .danger { border-color: #555; }
+.loop-redo-controls { display: flex; align-items: center; gap: 4px; }
+.loop-more { position: relative; }
+.loop-more summary, .dock summary { padding: 9px 10px; border: 1px solid #292929; color: #777; font-size: 8px; letter-spacing: .08em; cursor: pointer; list-style: none; }
+.loop-more summary::-webkit-details-marker, .dock summary::-webkit-details-marker { display: none; }
+.loop-more > div { position: absolute; right: 0; bottom: calc(100% + 6px); display: grid; width: 180px; gap: 4px; padding: 5px; border: 1px solid #292929; background: rgba(4,4,4,.97); }
 .loop-performance { position: absolute; left: 50%; top: 48%; z-index: 7; display: grid; grid-template-columns: minmax(360px, 620px); gap: 28px; width: min(680px, calc(100vw - 42px)); transform: translate(-50%, -50%); pointer-events: none; text-align: center; opacity: .96; }
 .loop-performance small { display: block; color: #777; font-size: 12px; letter-spacing: .2em; }
 .loop-performance strong { display: block; margin-top: 9px; color: #e1e1e1; font-size: clamp(30px, 5vw, 58px); font-weight: 400; line-height: 1; letter-spacing: .08em; }
 .loop-performance span { display: block; margin-top: 9px; color: #929292; font-size: 11px; letter-spacing: .09em; }
 .loop-count-in { position: absolute; inset: 50% auto auto 50%; width: 240px; transform: translate(-50%, -50%); }
 .loop-count-in strong { color: #f4f4f4; font-size: clamp(92px, 18vw, 180px); animation: count-pulse .4s ease-out; }
+.loop-count-in strong[data-ready="true"] { font-size: clamp(28px, 7vw, 58px); letter-spacing: .16em; }
 .loop-current, .loop-next { padding: 18px 22px; border: 1px solid rgba(255,255,255,.09); background: rgba(2,2,2,.48); }
 .loop-next { opacity: .56; }
 .loop-next strong { color: #999; font-size: clamp(20px, 3vw, 34px); }
@@ -97,7 +103,15 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .performance-keys b { color: #d0d0d0; font-weight: 500; }
 .performance-keys span { width: 100%; margin: 0; color: #5f5f5f; }
 @keyframes count-pulse { from { opacity: .18; transform: scale(.72); } to { opacity: 1; transform: scale(1); } }
-.dock { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 5px; padding: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(5,5,5,.76); backdrop-filter: blur(12px); pointer-events: auto; }
+.performance-hit { position: absolute; left: 50%; top: 24%; z-index: 10; display: grid; min-width: 150px; justify-items: center; padding: 12px 18px; border: 1px solid rgba(242,242,242,.28); background: rgba(2,2,2,.76); transform: translate(-50%, -50%); pointer-events: none; }
+.performance-hit strong { color: #f2f2f2; font-size: 28px; font-weight: 400; line-height: 1; letter-spacing: .06em; }
+.performance-hit span { margin-top: 7px; color: #9a9a9a; font-size: 9px; letter-spacing: .1em; }
+.performance-hit[data-kind="kick"] { border-color: rgba(242,242,242,.48); }
+.performance-hit[data-kind="hat"] { min-width: 126px; transform: translate(-50%, -50%) scale(.92); }
+.dock { position: absolute; right: 18px; bottom: 18px; pointer-events: auto; }
+.dock summary { min-width: 92px; background: rgba(5,5,5,.8); backdrop-filter: blur(12px); text-align: center; }
+.dock[open] summary { color: #aaa; }
+.dock > div { position: absolute; right: 0; bottom: calc(100% + 6px); display: grid; width: 176px; gap: 4px; padding: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(5,5,5,.94); backdrop-filter: blur(12px); }
 .dock .danger { border-color: rgba(255,255,255,.32); }
 .meta-nav { position: absolute; left: 20px; top: 94px; display: flex; gap: 14px; }
 .meta-nav button { font-size: 9px; color: rgba(255,255,255,.38); }
@@ -196,9 +210,11 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .performance-view .scene-launcher,
 .performance-view .compare-panel,
 .performance-view .meta-nav,
-.performance-view .dock { opacity: 0; pointer-events: none; }
-.performance-view .mode-nav { opacity: .18; }
-.performance-view .mode-nav:hover { opacity: 1; }
+.performance-view .dock { visibility: hidden; opacity: 0; pointer-events: none; }
+.performance-view .mode-nav { visibility: hidden; opacity: 0; pointer-events: none; }
+.loop-performance[data-status="count-in"] .loop-current,
+.loop-performance[data-status="count-in"] .loop-next,
+.loop-performance[data-status="count-in"] .performance-keys { opacity: .12; }
 
 @media (max-width: 900px) {
   .culture-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
@@ -227,13 +243,14 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .legend { display: none; }
   .overview { left: 10px; bottom: 64px; width: 112px; }
   .overview canvas { width: 110px; height: 55px; }
-  .dock { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); overflow-x: auto; }
+  .dock { right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .dock > div { width: min(176px, calc(100vw - 20px)); }
   .arrangement-modes { right: 10px; bottom: 62px; max-width: calc(100vw - 20px); overflow-x: auto; }
   .arrangement-modes span, .arrangement-modes button { white-space: nowrap; }
   .performance-modes { left: 10px; bottom: 99px; max-width: calc(100vw - 20px); overflow-x: auto; }
   .track-lanes { left: 10px; bottom: 136px; max-width: calc(100vw - 20px); }
   .scene-launcher { left: 10px; right: 10px; bottom: 136px; }
-  .loop-panel { bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: 1fr repeat(4, auto); width: calc(100vw - 20px); }
+  .loop-panel { bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: 1fr repeat(3, auto); width: calc(100vw - 20px); }
   .loop-panel #loop-progress { grid-column: 1 / -1; grid-row: 2; }
   .loop-panel #loop-keys { grid-row: 3; }
   .loop-performance { top: 44%; width: calc(100vw - 24px); gap: 14px; }
@@ -244,8 +261,10 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .loop-beats { gap: 3px; }
   .loop-beats i { height: 6px; }
   .performance-keys { gap: 12px; font-size: 10px; }
+  .performance-hit { top: 20%; min-width: 126px; padding: 10px 14px; }
+  .performance-hit strong { font-size: 22px; }
   .performance-modes span, .performance-modes button, .track-lanes span, .track-lanes button { white-space: nowrap; }
-  .dock button { white-space: nowrap; flex: 0 0 auto; }
+  .dock button { white-space: nowrap; }
   .detail { top: 164px; right: 10px; max-height: calc(100vh - 235px); }
   .drawer { inset: 90px 10px 70px; }
   .culture-grid, .launch .culture-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
