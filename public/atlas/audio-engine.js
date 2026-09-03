@@ -734,7 +734,9 @@ export class SequencerAudio extends EventTarget {
   }
 
   async startGuidedLoop() {
-    await this.start();
+    // Entering LOOP from an already-playing constellation must keep the shared
+    // transport alive. start() is a toggle, so only call it when stopped.
+    if (!this.running) await this.start();
     if (this.loopSession?.status === 'stopped' && this.loopSession.completed.length) {
       const session = this.loopSession;
       session.uiRevision += 1;

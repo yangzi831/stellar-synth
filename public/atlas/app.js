@@ -18,6 +18,9 @@ const overviewCanvas = $('#overview');
 const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
+const mobileDetailQuery = window.matchMedia('(max-width: 680px)');
+const activeTouchPointers = new Map();
+let pinchGesture = null;
 
 const KEYBOARD_STEPS = [
   ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'], ['KeyY', 'Y'], ['KeyU', 'U'],
@@ -75,6 +78,7 @@ const state = {
   compareSwitching: false,
   compareTimer: null,
   detailCollapsed: false,
+  detailCollapsePreference: null,
   lastCountInBeat: 0,
   performanceHitTimer: null,
 };
@@ -290,7 +294,8 @@ function chineseDetailStory(item, current) {
   return [structure, landmarkStory || cultureStory].filter(Boolean).join('。').replace(/。。+/g, '。');
 }
 
-function setDetailCollapsed(collapsed) {
+function setDetailCollapsed(collapsed, remember = false) {
+  if (remember) state.detailCollapsePreference = collapsed;
   state.detailCollapsed = collapsed;
   $('#detail').classList.toggle('collapsed', collapsed);
   $('#detail-collapse').textContent = collapsed ? '展开介绍 +' : '收起介绍 −';
@@ -879,7 +884,8 @@ function showDetail(item) {
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
   $('#detail-story-zh').textContent = chineseDetailStory(item, current);
-  setDetailCollapsed(state.detailCollapsed);
+  const responsiveDefault = mobileDetailQuery.matches && state.mode === 'play';
+  setDetailCollapsed(state.detailCollapsePreference ?? responsiveDefault);
   $('#detail').hidden = false;
   $('#landmark-select').value = item.id;
   $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${constellationLabel(item)} · ${item.starCount} 颗星 / STEPS`;
@@ -1316,9 +1322,9 @@ function hitConstellation(x, y) {
   return best;
 }
 
-function hitSequenceStar(x, y) {
+function hitSequenceStar(x, y, radius = 14) {
   if (!state.selected) return null;
-  let best = null; let distance = 14;
+  let best = null; let distance = radius;
   for (let i = 0; i < audio.sequence.length; i += 1) {
     if (state.performanceMode === 'arrange' && !state.controlNodes.some((node) => node.step.id === audio.sequence[i].id)) continue;
     const point = starPoint(audio.sequence[i]);
@@ -1329,8 +1335,24 @@ function hitSequenceStar(x, y) {
 }
 
 stage.addEventListener('pointerdown', (event) => {
-  stage.setPointerCapture(event.pointerId);
-  const star = state.mode === 'play' && state.localView ? hitSequenceStar(event.clientX, event.clientY) : null;
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activeTouchPointers.size >= 2) {
+      if (state.pointer?.playing) releaseInteractiveStep(state.pointer.gestureId);
+      const [first, second] = [...activeTouchPointers.values()];
+      const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+      pinchGesture = {
+        distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+        zoom: state.view.zoom, panX: state.view.panX, panY: state.view.panY, midpoint,
+      };
+      state.pointer = null;
+      return;
+    }
+  }
+  try { stage.setPointerCapture(event.pointerId); } catch { /* capture is optional on older mobile browsers */ }
+  const hitRadius = event.pointerType === 'touch' ? 28 : 14;
+  const star = state.mode === 'play' && state.localView ? hitSequenceStar(event.clientX, event.clientY, hitRadius) : null;
   const loop = audio.loopSnapshot();
   const loopRecording = Boolean(star) && state.performanceMode === 'loop' && loop.active && loop.status === 'recording';
   state.pointer = {
@@ -1364,12 +1386,29 @@ stage.addEventListener('pointerdown', (event) => {
 });
 
 stage.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'touch' && activeTouchPointers.has(event.pointerId)) {
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinchGesture && activeTouchPointers.size >= 2) {
+      event.preventDefault();
+      const [first, second] = [...activeTouchPointers.values()];
+      const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+      const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+      const nextZoom = clamp(pinchGesture.zoom * (distance / pinchGesture.distance), 0.65, 12);
+      const ratio = nextZoom / pinchGesture.zoom;
+      state.view.zoom = nextZoom;
+      state.view.panX = midpoint.x - width / 2 - (pinchGesture.midpoint.x - width / 2 - pinchGesture.panX) * ratio;
+      state.view.panY = midpoint.y - height / 2 - (pinchGesture.midpoint.y - height / 2 - pinchGesture.panY) * ratio;
+      state.localView = state.view.zoom > 1.05;
+      updateViewReadout();
+      return;
+    }
+  }
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
   const dx = event.clientX - pointer.x; const dy = event.clientY - pointer.y;
   if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > 4) pointer.moved = true;
   if (pointer.playing || pointer.loopRecording) {
-    const star = hitSequenceStar(event.clientX, event.clientY);
+    const star = hitSequenceStar(event.clientX, event.clientY, event.pointerType === 'touch' ? 28 : 14);
     if (star && star.step.id !== pointer.lastStar) {
       if (pointer.playing) releaseInteractiveStep(pointer.gestureId);
       pointer.lastStar = star.step.id;
@@ -1393,6 +1432,14 @@ stage.addEventListener('pointermove', (event) => {
 });
 
 stage.addEventListener('pointerup', (event) => {
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchGesture) {
+      if (activeTouchPointers.size < 2) pinchGesture = null;
+      state.pointer = null;
+      return;
+    }
+  }
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
   if (!pointer.moved && !pointer.playing && !pointer.loopRecording && !pointer.arrangeControl) {
@@ -1420,8 +1467,10 @@ stage.addEventListener('pointerup', (event) => {
   state.pointer = null;
 });
 
-stage.addEventListener('pointercancel', () => {
-  if (state.pointer?.gestureId) releaseInteractiveStep(state.pointer.gestureId);
+stage.addEventListener('pointercancel', (event) => {
+  activeTouchPointers.delete(event.pointerId);
+  if (activeTouchPointers.size < 2) pinchGesture = null;
+  if (state.pointer?.id === event.pointerId && state.pointer.gestureId) releaseInteractiveStep(state.pointer.gestureId);
   state.pointer = null;
 });
 stage.addEventListener('dblclick', (event) => {
@@ -1757,7 +1806,12 @@ $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#detail-close').addEventListener('click', () => { $('#detail').hidden = true; });
-$('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed));
+$('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed, true));
+mobileDetailQuery.addEventListener('change', (event) => {
+  if (state.mode === 'play' && state.selected && state.detailCollapsePreference == null) {
+    setDetailCollapsed(event.matches);
+  }
+});
 $('#enter-landmark').addEventListener('click', () => focusLandmark(state.selected));
 $('#play-landmark').addEventListener('click', async () => {
   if (state.selected) setAudioLandmark(state.selected);

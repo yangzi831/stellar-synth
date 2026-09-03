@@ -5,6 +5,7 @@ const html = fs.readFileSync(new URL('../public/atlas/index.html', import.meta.u
 const publicIndex = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const audio = fs.readFileSync(new URL('../public/atlas/audio-engine.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../public/atlas/app.js', import.meta.url), 'utf8');
+const css = fs.readFileSync(new URL('../public/atlas/app.css', import.meta.url), 'utf8');
 const sampleManifest = JSON.parse(fs.readFileSync(new URL('../public/audio/culture-samples.json', import.meta.url), 'utf8'));
 const starIds = new Set(data.stars.map((star) => star.id));
 const cultures = new Map(data.cultures.map((culture) => [culture.id, culture]));
@@ -112,6 +113,11 @@ assert(app.includes("['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E']"), 'LOOP must i
 assert(app.indexOf("state.performanceMode === 'loop'") < app.indexOf("state.performanceMode !== 'loop' && audio.sequence.length"), 'LOOP routing must run before PLAY-only Q/W drums.');
 assert(html.includes('ALL LETTER KEYS = CURRENT INSTRUMENT'), 'LOOP performance view must explain stage-owned keys.');
 assert(app.includes('pointer.loopRecording'), 'Pointer star input must route through the current LOOP stage.');
+assert(audio.includes('if (!this.running) await this.start();'), 'Entering LOOP while PLAY is running must preserve the shared transport.');
+assert(app.includes('activeTouchPointers') && app.includes('pinchGesture'), 'Mobile two-finger pan/zoom state is missing.');
+assert(app.includes("event.pointerType === 'touch' ? 28 : 14"), 'Touch stars need a larger playable hit target than mouse stars.');
+assert(app.includes('mobileDetailQuery.matches'), 'PLAY details must have a mobile-only collapsed default.');
+assert(css.includes('.detail.collapsed') && css.includes('background: rgba(4,4,4,.46)'), 'Collapsed mobile landmark identity must use a translucent surface.');
 assert(app.includes("loop.stage?.id === 'drums'"), 'Only the DRUM stage may assign Q/W drum roles inside LOOP.');
 assert(app.includes('requestedIndex % audio.sequence.length'), 'Every displayed Star key must wrap to an audible star.');
 assert(app.includes('showPerformanceHit('), 'Immediate performance feedback overlay is missing.');
