@@ -96,8 +96,15 @@ for (const control of ['loop-keys', 'loop-redo', 'loop-redo-layer', 'loop-stop',
 assert((html.match(/<i><\/i>/g) || []).length >= 32, 'Guided Loop must render CURRENT and NEXT 16-beat rows.');
 assert(html.includes('id="loop-entry"'), 'Primary LOOP entry is missing.');
 assert(html.includes('Q — KICK') && html.includes('W — HI-HAT'), 'Stable Q/W rhythm controls are missing.');
-assert(!app.includes("['KeyQ', 'Q']") && !app.includes("['KeyW', 'W']"), 'Q/W must not remain in the Star keyboard mapping.');
+const playKeyboardBlock = app.slice(app.indexOf('const KEYBOARD_STEPS'), app.indexOf('const LOOP_KEYBOARD_STEPS'));
+assert(!playKeyboardBlock.includes("['KeyQ', 'Q']") && !playKeyboardBlock.includes("['KeyW', 'W']"), 'Q/W must not remain in the PLAY Star keyboard mapping.');
 assert(app.includes("event.code === 'KeyQ'") && app.includes("event.code === 'KeyW'"), 'Global Q/W rhythm keyboard handlers are missing.');
+assert(app.includes('const LOOP_KEYBOARD_STEPS'), 'LOOP must use a dedicated all-letter keyboard map.');
+assert(app.includes("['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E']"), 'LOOP must include Q/W as current-layer instrument keys.');
+assert(app.indexOf("state.performanceMode === 'loop'") < app.indexOf("state.performanceMode !== 'loop' && audio.sequence.length"), 'LOOP routing must run before PLAY-only Q/W drums.');
+assert(html.includes('ALL LETTER KEYS = CURRENT INSTRUMENT'), 'LOOP performance view must explain stage-owned keys.');
+assert(app.includes('pointer.loopRecording'), 'Pointer star input must route through the current LOOP stage.');
+assert(app.includes("loop.stage?.id === 'drums'"), 'Only the DRUM stage may assign Q/W drum roles inside LOOP.');
 assert(app.includes('requestedIndex % audio.sequence.length'), 'Every displayed Star key must wrap to an audible star.');
 assert(app.includes('showPerformanceHit('), 'Immediate performance feedback overlay is missing.');
 assert(audio.includes("options.role === 'kick' ? 4"), 'Kick quantization must use a one-beat grid.');
@@ -110,6 +117,9 @@ assert(audio.includes('transportStep < session.stageStartStep'), 'Guided Loop mu
 assert(audio.includes('session.pendingOriginStep = recordStart'), 'REDO must schedule a prompt shared bar-zero restart.');
 assert(audio.includes('session.uiRevision !== revision'), 'Stale scheduled Loop UI events must not overwrite STOP/REDO state.');
 assert(audio.includes('completedLabels:'), 'Loop UI must expose user-facing layer names.');
+assert(audio.includes("new CustomEvent('loop-playback'"), 'Loop must expose actual cumulative layer playback for verification.');
+assert(audio.includes('session.playbackCounts[id]'), 'Completed layer playback must be counted after it is audibly scheduled.');
+assert(audio.includes("this.markTrack('drums', time, 0.52, 'metal-perc'"), 'Every DRUM-stage key must remain percussion.');
 assert(audio.includes('resting: []'), 'Guided Loop must preserve empty stages as intentional rests.');
 assert(app.includes('EMPTY STAGES BECOME REST'), 'Guided Loop must explain empty-stage rest behaviour.');
 for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-poly', 'dark-pulse', 'fm-metallic']) {

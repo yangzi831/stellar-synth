@@ -27,6 +27,16 @@ const KEYBOARD_STEPS = [
   ['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M'],
 ];
 
+// PLAY reserves Q/W for kick and hi-hat. LOOP deliberately owns the whole
+// alphabet so every key becomes the instrument of the layer being recorded.
+const LOOP_KEYBOARD_STEPS = [
+  ['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'],
+  ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
+  ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
+  ['KeyH', 'H'], ['KeyJ', 'J'], ['KeyK', 'K'], ['KeyL', 'L'],
+  ['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M'],
+];
+
 const state = {
   data: null,
   stars: new Map(),
@@ -300,6 +310,15 @@ function keyboardStepIndex(event) {
   return base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
 }
 
+function loopKeyboardStepIndex(event) {
+  return LOOP_KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+}
+
+function loopKeyboardBinding(index) {
+  const entry = LOOP_KEYBOARD_STEPS[index];
+  return entry ? { code: entry[0], label: entry[1] } : null;
+}
+
 function showPerformanceHit(key, role, kind = 'star') {
   const feedback = $('#performance-hit');
   if (!feedback) return;
@@ -539,7 +558,7 @@ function setPerformanceMode(mode) {
   $('#loop-performance').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#keyboard-note').textContent = mode === 'star'
     ? `Q — KICK · W — HI-HAT · E–P / A–L / Z–M — STARS · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
-    : `Q — KICK · W — HI-HAT · 16 BEATS · DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE`;
+    : `全部字母键 = 当前音色 · ALL LETTER KEYS = CURRENT INSTRUMENT · 16 BEATS · DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE`;
   $('#status').textContent = mode === 'star'
     ? 'STAR · QWERTY 字母键与触摸直接演奏恒星'
     : 'LOOP · 点击 START · 8 BEAT COUNT-IN · 每层 16 BEATS · 自动逐层录制';
@@ -1312,20 +1331,34 @@ function hitSequenceStar(x, y) {
 stage.addEventListener('pointerdown', (event) => {
   stage.setPointerCapture(event.pointerId);
   const star = state.mode === 'play' && state.localView ? hitSequenceStar(event.clientX, event.clientY) : null;
+  const loop = audio.loopSnapshot();
+  const loopRecording = Boolean(star) && state.performanceMode === 'loop' && loop.active && loop.status === 'recording';
   state.pointer = {
     id: event.pointerId, x: event.clientX, y: event.clientY,
     startX: event.clientX, startY: event.clientY, moved: false,
-    playing: Boolean(star) && state.performanceMode === 'star', arrangeControl: Boolean(star) && state.performanceMode === 'arrange', lastStar: null, gestureId: `pointer:${event.pointerId}`,
+    playing: Boolean(star) && state.performanceMode === 'star',
+    loopRecording,
+    arrangeControl: Boolean(star) && state.performanceMode === 'arrange', lastStar: null, gestureId: `pointer:${event.pointerId}`,
   };
   if (star) {
     state.pointer.lastStar = star.step.id;
     state.activeStep = star.index;
-    if (state.performanceMode === 'arrange') {
+    if (loopRecording) {
+      const recorded = audio.recordLoopInput(star.index);
+      if (recorded) {
+        $('#status').textContent = `LOOP ${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id} · STEP ${recorded.step + 1}`;
+        showPerformanceHit('●', `${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id}`, 'star');
+      }
+    } else if (state.performanceMode === 'arrange') {
       const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.step.id);
       triggerControlNode(controlIndex);
-    } else {
+    } else if (state.performanceMode === 'star') {
       pressInteractiveStep(star.step, star.index, state.pointer.gestureId);
       $('#status').textContent = `INSIDE · STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+    } else if (state.performanceMode === 'loop') {
+      $('#status').textContent = loop.status === 'count-in'
+        ? 'LOOP · 等待倒计时结束 / WAIT FOR COUNT-IN'
+        : 'LOOP · 选择 REDO 继续录层，或 EXIT 返回恒星演奏';
     }
   }
 });
@@ -1335,15 +1368,21 @@ stage.addEventListener('pointermove', (event) => {
   if (!pointer || pointer.id !== event.pointerId) return;
   const dx = event.clientX - pointer.x; const dy = event.clientY - pointer.y;
   if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > 4) pointer.moved = true;
-  if (pointer.playing) {
+  if (pointer.playing || pointer.loopRecording) {
     const star = hitSequenceStar(event.clientX, event.clientY);
     if (star && star.step.id !== pointer.lastStar) {
-      releaseInteractiveStep(pointer.gestureId);
+      if (pointer.playing) releaseInteractiveStep(pointer.gestureId);
       pointer.lastStar = star.step.id;
       state.activeStep = star.index;
-      pressInteractiveStep(star.step, star.index, pointer.gestureId);
+      if (pointer.loopRecording) {
+        const recorded = audio.recordLoopInput(star.index);
+        const loop = audio.loopSnapshot();
+        if (recorded) showPerformanceHit('●', `${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id}`, 'star');
+      } else pressInteractiveStep(star.step, star.index, pointer.gestureId);
       state.trail.push({ x: star.point.x, y: star.point.y, time: performance.now() });
-      $('#status').textContent = `INSIDE · PATH STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+      $('#status').textContent = pointer.loopRecording
+        ? `LOOP INPUT · ${audio.loopSnapshot().stage?.label || 'LAYER'} · HIP ${star.step.id}`
+        : `INSIDE · PATH STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
     }
   } else {
     state.view.panX += dx;
@@ -1356,7 +1395,7 @@ stage.addEventListener('pointermove', (event) => {
 stage.addEventListener('pointerup', (event) => {
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
-  if (!pointer.moved && !pointer.playing && !pointer.arrangeControl) {
+  if (!pointer.moved && !pointer.playing && !pointer.loopRecording && !pointer.arrangeControl) {
     const item = hitConstellation(event.clientX, event.clientY);
     if (item) {
       if (state.mode === 'play' && state.selected && !state.localView) {
@@ -1537,6 +1576,8 @@ audio.addEventListener('loop-state', (event) => {
   const nextBeatCells = $$('#loop-next-beats i');
   performancePanel.hidden = state.performanceMode !== 'loop' || state.mode !== 'play';
   performancePanel.dataset.status = loop.status;
+  performancePanel.dataset.completedLayers = loop.completed?.join(',') || '';
+  performancePanel.dataset.playbackCounts = JSON.stringify(loop.playbackCounts || {});
   const beat = Math.max(1, loop.status === 'full' ? loop.loopBeat || 1 : loop.beatNumber || 1);
   $('#loop-count-in').hidden = loop.status !== 'count-in';
   if (countNumber) {
@@ -1606,6 +1647,13 @@ audio.addEventListener('loop-state', (event) => {
   }
   redoButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
   clearButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
+});
+
+audio.addEventListener('loop-playback', (event) => {
+  const performancePanel = $('#loop-performance');
+  if (!performancePanel) return;
+  performancePanel.dataset.playingLayers = event.detail.layerIds.join(',');
+  performancePanel.dataset.playbackCounts = JSON.stringify(event.detail.playbackCounts);
 });
 
 audio.addEventListener('track-change', (event) => {
@@ -1760,32 +1808,32 @@ document.addEventListener('keydown', async (event) => {
       launchScene(Number(event.code.slice(-1)));
       return;
     }
-    if (state.mode === 'play' && audio.sequence.length && (event.code === 'KeyQ' || event.code === 'KeyW')) {
-      event.preventDefault();
-      const role = event.code === 'KeyQ' ? 'kick' : 'hat';
-      if (role === 'kick') await audio.performanceKick(); else await audio.performanceHat();
-      const loop = audio.loopSnapshot();
-      if (state.performanceMode === 'loop' && loop.active && loop.status === 'recording' && loop.stage?.id === 'drums') {
-        const recorded = audio.recordLoopInput(role === 'kick' ? 0 : 1, { role, audition: false });
-        if (recorded) $('#status').textContent = `${role === 'kick' ? 'Q — KICK' : 'W — HI-HAT'} · QUANTIZED STEP ${recorded.step + 1}`;
-      } else $('#status').textContent = role === 'kick' ? 'Q — KICK' : 'W — HI-HAT';
-      showPerformanceHit(role === 'kick' ? 'Q' : 'W', role === 'kick' ? 'KICK · 1 BEAT GRID' : 'HI-HAT · 1/2 BEAT GRID', role);
-      return;
-    }
     if (state.performanceMode === 'loop' && state.mode === 'play' && state.localView) {
-      const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
-      if (base >= 0) {
-        event.preventDefault();
-        const keyIndex = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
-        const recorded = audio.recordLoopInput(keyIndex);
-        if (recorded) {
-          const label = keyboardBinding(keyIndex).label;
-          const loop = audio.loopSnapshot();
-          $('#status').textContent = `LOOP INPUT · ${label} · STAR ${recorded.starId || '—'} · STEP ${recorded.step + 1}`;
-          showPerformanceHit(label, `${loop.stage?.label || 'LAYER'} · HIP ${recorded.starId || '—'} · STEP ${recorded.step + 1}`, 'star');
+      const loopKeyIndex = loopKeyboardStepIndex(event);
+      if (loopKeyIndex >= 0) {
+        const loop = audio.loopSnapshot();
+        if (loop.active && loop.status === 'recording') {
+          event.preventDefault();
+          const drumRole = loop.stage?.id === 'drums'
+            ? loopKeyIndex === 0 ? 'kick' : loopKeyIndex === 1 ? 'hat' : null
+            : null;
+          const recorded = audio.recordLoopInput(loopKeyIndex, drumRole ? { role: drumRole } : {});
+          if (recorded) {
+            const label = loopKeyboardBinding(loopKeyIndex).label;
+            $('#status').textContent = `LOOP ${loop.stage?.label || 'LAYER'} · ${label} · ${recorded.starId || 'VOICE'} · STEP ${recorded.step + 1}`;
+            showPerformanceHit(label, `${loop.stage?.label || 'LAYER'} · CURRENT INSTRUMENT · STEP ${recorded.step + 1}`, loop.stage?.id || 'star');
+          }
           return;
         }
       }
+    }
+    if (state.mode === 'play' && state.performanceMode !== 'loop' && audio.sequence.length && (event.code === 'KeyQ' || event.code === 'KeyW')) {
+      event.preventDefault();
+      const role = event.code === 'KeyQ' ? 'kick' : 'hat';
+      if (role === 'kick') await audio.performanceKick(); else await audio.performanceHat();
+      $('#status').textContent = role === 'kick' ? 'Q — KICK' : 'W — HI-HAT';
+      showPerformanceHit(role === 'kick' ? 'Q' : 'W', role === 'kick' ? 'KICK · 1 BEAT GRID' : 'HI-HAT · 1/2 BEAT GRID', role);
+      return;
     }
     const requestedIndex = keyboardStepIndex(event);
     if (requestedIndex >= 0 && audio.sequence.length) {

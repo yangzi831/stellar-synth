@@ -88,12 +88,12 @@ export const CULTURE_SAMPLE_MANIFEST = {
 };
 
 const LOOP_STAGES = [
-  { id: 'drums', label: 'DRUM', instrument: 'DRUM · Q KICK / W HI-HAT', bars: 4, grid: 2, gridLabel: 'Q 1/4 · W 1/8', keyHint: 'Q — KICK · W — HI-HAT' },
-  { id: 'bass', label: 'BASS', instrument: 'BASS · DEEP SYNTH', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'E–P STAR BASS · A–L +8VE · Z–M RESPONSE' },
-  { id: 'synth', label: 'ARP', instrument: 'ARP · RHYTHMIC PLUCK', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'E–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
-  { id: 'harmony', label: 'HARMONY', instrument: 'HARMONY · SPACE PAD', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'E–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
-  { id: 'lead', label: 'MELODY', instrument: 'MELODY · STAR MOTIF', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'E–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
-  { id: 'texture', label: 'TEXTURE', instrument: 'TEXTURE · GRANULAR SPACE', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'E–P AIR / GRAIN · A–M TEXTURE VARIATIONS' },
+  { id: 'drums', label: 'DRUM', instrument: 'DRUM KIT · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P / A–L / Z–M — DRUM KIT' },
+  { id: 'bass', label: 'BASS', instrument: 'BASS · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P BASS · A–L +8VE · Z–M LOW RESPONSE' },
+  { id: 'synth', label: 'ARP', instrument: 'ARP · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
+  { id: 'harmony', label: 'HARMONY', instrument: 'HARMONY · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
+  { id: 'lead', label: 'MELODY', instrument: 'MELODY · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
+  { id: 'texture', label: 'TEXTURE', instrument: 'TEXTURE · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P / A–L / Z–M — AIR / GRAIN / SHIMMER' },
 ];
 
 // Culture profiles describe musical organisation, never ethnic instrument skins.
@@ -638,6 +638,7 @@ export class SequencerAudio extends EventTarget {
       active: session.active, status: session.status, stage,
       stageIndex: visibleStageIndex, completed: [...session.completed],
       completedLabels: session.completed.map((id) => LOOP_STAGES.find((entry) => entry.id === id)?.label || id.toUpperCase()),
+      playbackCounts: { ...(session.playbackCounts || {}) },
       resting: [...session.resting], visited: [...session.visited],
       activeLayerCount: session.completed.length, restLayerCount: session.resting.length,
       currentLayerEvents: currentLayer?.events.length || 0,
@@ -706,6 +707,7 @@ export class SequencerAudio extends EventTarget {
       displayPosition: this.currentTransportPosition(),
       loopOriginStep: null,
       completed: [], resting: [], visited: [],
+      playbackCounts: Object.fromEntries(LOOP_STAGES.map((stage) => [stage.id, 0])),
       layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
     };
     this.sceneAuto = false;
@@ -748,6 +750,7 @@ export class SequencerAudio extends EventTarget {
     session.uiRevision += 1;
     const layer = session.layers.get(targetId);
     layer.events = [];
+    session.playbackCounts[targetId] = 0;
     session.completed = session.completed.filter((entry) => entry !== targetId);
     session.resting = session.resting.filter((entry) => entry !== targetId);
     session.status = 'count-in';
@@ -1679,13 +1682,24 @@ export class SequencerAudio extends EventTarget {
   scheduleLoopPlayback(stepNumber, time) {
     const session = this.loopSession;
     if (!session?.active) return;
+    const layerIds = [];
     for (const id of session.completed) {
       const layer = session.layers.get(id);
       if (!layer?.events.length) continue;
       const length = layer.bars * GROOVE_STEPS;
       const origin = session.loopOriginStep ?? layer.anchorStep;
       const relative = ((stepNumber - origin) % length + length) % length;
-      layer.events.filter((event) => event.step === relative).forEach((event) => this.playLoopEvent(id, event, time, false));
+      layer.events.filter((event) => event.step === relative).forEach((event) => {
+        this.playLoopEvent(id, event, time, false);
+        session.playbackCounts[id] = (session.playbackCounts[id] || 0) + 1;
+        if (!layerIds.includes(id)) layerIds.push(id);
+      });
+    }
+    if (layerIds.length) {
+      this.dispatchEvent(new CustomEvent('loop-playback', { detail: {
+        stepNumber, audioTime: time, layerIds,
+        playbackCounts: { ...session.playbackCounts },
+      } }));
     }
   }
 
@@ -1702,7 +1716,7 @@ export class SequencerAudio extends EventTarget {
       else if (voice === 2) { this.sampleOpenHat(time, 0.014, star?.pan ?? 0); this.markTrack('drums', time, 0.5, 'open-hat', [star?.id].filter(Boolean)); }
       else if (voice === 3) { this.sampleClap(time, 0.013, star?.pan ?? 0); this.markTrack('drums', time, 0.58, 'perc', [star?.id].filter(Boolean)); }
       else if (voice === 4) { this.samplePerc(time, 0.012, star?.pan ?? 0, 1900 + degree * 340); this.markTrack('drums', time, 0.5, 'perc', [star?.id].filter(Boolean)); }
-      else { this.sampleGlitch(time, 0.006, star?.pan ?? 0, this.profile.seed + key); this.markTrack('texture', time, 0.52, 'glitch', [star?.id].filter(Boolean)); }
+      else { this.samplePerc(time, 0.009, star?.pan ?? 0, 3000 + degree * 210); this.markTrack('drums', time, 0.52, 'metal-perc', [star?.id].filter(Boolean)); }
       return;
     }
     const rowOctaves = {
