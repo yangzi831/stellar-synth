@@ -20,8 +20,8 @@ const stage = $('#stage');
 const audio = new SequencerAudio();
 
 const KEYBOARD_STEPS = [
-  ['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'],
-  ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
+  ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'], ['KeyY', 'Y'], ['KeyU', 'U'],
+  ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
   ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
   ['KeyH', 'H'], ['KeyJ', 'J'], ['KeyK', 'K'], ['KeyL', 'L'],
   ['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M'],
@@ -65,6 +65,7 @@ const state = {
   compareSwitching: false,
   compareTimer: null,
   detailCollapsed: false,
+  lastCountInBeat: 0,
 };
 
 let width = 0;
@@ -514,15 +515,17 @@ function setAudioLandmark(item) {
 function setPerformanceMode(mode) {
   if (!['star', 'loop'].includes(mode)) return;
   state.performanceMode = mode;
+  document.body.classList.toggle('performance-view', mode === 'loop' && state.mode === 'play');
+  $('#loop-entry').classList.toggle('on', mode === 'loop' && state.mode === 'play');
   $$('.performance-mode').forEach((button) => button.classList.toggle('on', button.dataset.performance === mode));
   $('#loop-panel').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#loop-performance').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#keyboard-note').textContent = mode === 'star'
-    ? `恒星演奏 / STAR PLAY · QWERTY 字母键 · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
-    : `引导循环 / GUIDED LOOP · 系统自动带你录制 DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE`;
+    ? `Q — KICK · W — HI-HAT · E–P / A–L / Z–M — STARS · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
+    : `Q — KICK · W — HI-HAT · 16 BEATS · DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE`;
   $('#status').textContent = mode === 'star'
     ? 'STAR · QWERTY 字母键与触摸直接演奏恒星'
-    : 'LOOP · 点击 START · 2 BAR / 8 BEAT COUNT-IN · 自动逐层录制';
+    : 'LOOP · 点击 START · 8 BEAT COUNT-IN · 每层 16 BEATS · 自动逐层录制';
 }
 
 async function launchScene(number) {
@@ -540,6 +543,14 @@ async function launchScene(number) {
 }
 
 async function startGuidedLoop() {
+  if (state.mode !== 'play') setMode('play');
+  if (!state.selected) {
+    const first = culture().constellations.find((item) => item.starCount >= 3);
+    if (first) {
+      showDetail(first);
+      await enterLandmark(first, false);
+    }
+  } else if (!state.localView) await enterLandmark(state.selected, false);
   setPerformanceMode('loop');
   const snapshot = await audio.startGuidedLoop();
   $('#loop-start').textContent = '重新录制 RECORD AGAIN';
@@ -561,6 +572,7 @@ function setArrangementMode(mode) {
   if (!['path', 'group', 'fragment'].includes(mode)) return;
   state.arrangementMode = mode;
   $$('.arrangement-mode').forEach((button) => button.classList.toggle('on', button.dataset.arrangement === mode));
+  $('#structure-summary').textContent = `结构 STRUCTURE · ${mode.toUpperCase()}`;
   if (state.selected) setAudioLandmark(state.selected);
   $('#status').textContent = `${mode.toUpperCase()} · ${mode === 'path' ? '路径旋律 / MELODIC ROUTE' : mode === 'group' ? '拓扑群组 / TOPOLOGICAL VOICING' : '碎片闪烁 / POINTILLISTIC BURSTS'}`;
 }
@@ -774,12 +786,17 @@ function setMode(mode) {
     state.compareLoops = 0;
   }
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
+  $('#loop-entry').classList.toggle('on', mode === 'play' && state.performanceMode === 'loop');
   $('#arrangement-modes').hidden = mode !== 'play';
-  $('#performance-modes').hidden = mode !== 'play';
-  $('#scene-launcher').hidden = mode !== 'play';
+  $('#performance-modes').hidden = true;
+  $('#scene-launcher').hidden = true;
   $('#loop-panel').hidden = mode !== 'play' || state.performanceMode !== 'loop';
   $('#loop-performance').hidden = mode !== 'play' || state.performanceMode !== 'loop';
   $('#compare-panel').hidden = mode !== 'compare';
+  if (mode !== 'play') {
+    document.body.classList.remove('performance-view');
+    state.performanceMode = 'star';
+  }
   if (mode === 'compare') {
     state.auto = false;
     state.autoLoops = 0;
@@ -815,7 +832,7 @@ function showDetail(item) {
     .filter((name, index, all) => name && name !== item.nativeName && all.indexOf(name) === index)
     .join(' / ');
   const mappedCount = Math.min(item.starCount, KEYBOARD_STEPS.length * 2);
-  $('#keyboard-note').textContent = `键盘 / KEYBOARD · QWERTY 字母键 · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
+  $('#keyboard-note').textContent = `Q — KICK · W — HI-HAT · E–P / A–L / Z–M · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
@@ -1490,15 +1507,32 @@ audio.addEventListener('loop-state', (event) => {
   const currentLayer = $('#loop-current-layer');
   const currentRole = $('#loop-current-role');
   const nextLayer = $('#loop-next-layer');
-  const beatCells = $$('#loop-beats i');
-  performancePanel.hidden = !loop.active;
-  const beat = Math.max(1, loop.beatNumber || 1);
-  if (countNumber) countNumber.textContent = loop.status === 'count-in' ? `${loop.countInBeat || beat} / ${loop.beatTotal || 8}` : '—';
+  const redoLayer = $('#loop-redo-layer');
+  const currentBeatCells = $$('#loop-current-beats i');
+  const nextBeatCells = $$('#loop-next-beats i');
+  performancePanel.hidden = state.performanceMode !== 'loop' || state.mode !== 'play';
+  const beat = Math.max(1, loop.status === 'full' ? loop.loopBeat || 1 : loop.beatNumber || 1);
+  $('#loop-count-in').hidden = loop.status !== 'count-in';
+  if (countNumber) countNumber.textContent = loop.status === 'count-in' ? String(loop.countInBeat || beat) : '—';
+  if (loop.status === 'count-in' && loop.countInBeat && loop.countInBeat !== state.lastCountInBeat) {
+    state.lastCountInBeat = loop.countInBeat;
+    countNumber?.animate([
+      { opacity: 0.18, transform: 'scale(.72)' },
+      { opacity: 1, transform: 'scale(1)' },
+    ], { duration: 360, easing: 'ease-out' });
+  } else if (loop.status !== 'count-in') state.lastCountInBeat = 0;
   if (currentLayer) currentLayer.textContent = loop.currentStage || (loop.status === 'full' ? 'FULL LOOP' : '—');
   if (currentRole) currentRole.textContent = loop.instrument || (loop.status === 'full' ? 'ALL LAYERS / 全部演奏层' : '—');
   if (nextLayer) nextLayer.textContent = loop.nextStage || '—';
-  beatCells.forEach((cell, index) => cell.classList.toggle('active', index === ((beat - 1) % 8)));
-  beatCells.forEach((cell, index) => cell.classList.toggle('current', index === ((loop.sixteenthStep || 0) % 8)));
+  currentBeatCells.forEach((cell, index) => {
+    cell.classList.toggle('active', index === ((beat - 1) % 16));
+    cell.classList.toggle('accent', index === 0);
+    cell.classList.toggle('bar-accent', index > 0 && index % 4 === 0);
+  });
+  nextBeatCells.forEach((cell, index) => {
+    cell.classList.toggle('accent', index === 0);
+    cell.classList.toggle('bar-accent', index > 0 && index % 4 === 0);
+  });
   if (!loop.active && loop.status === 'idle') {
     $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
     $('#loop-progress').textContent = 'COUNT-IN 8 BEATS → DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE';
@@ -1509,22 +1543,27 @@ audio.addEventListener('loop-state', (event) => {
     return;
   }
   const completed = loop.completed.length ? loop.completed.join(' + ').toUpperCase() : 'EMPTY';
+  if (redoLayer) {
+    [...redoLayer.options].forEach((option) => { option.disabled = !loop.completed.includes(option.value) && option.value !== loop.stage?.id; });
+    if (redoLayer.selectedOptions[0]?.disabled) redoLayer.value = loop.completed.at(-1) || loop.stage?.id || 'drums';
+  }
   if (!loop.active && loop.status === 'stopped') {
     $('#loop-stage').textContent = `LOOP STOPPED · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
-    $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO REBUILD`;
-    $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / STOP MUTED AUDIO AND PRESERVED LAYER DATA';
+    $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO RESUME`;
+    $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / START 可从同一 16 拍起点恢复';
+    $('#loop-start').textContent = '恢复循环 RESUME LOOP';
   } else if (loop.status === 'count-in') {
     $('#loop-stage').textContent = `COUNT-IN · 8 BEATS · ${loop.countInBeat || 1}/8`;
     $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'} · NEXT ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage?.keyHint || 'LISTEN TO THE COUNT-IN';
   } else if (loop.status === 'recording') {
-    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel} · BEAT ${loop.beatNumber || 1}/8`;
+    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel} · BEAT ${loop.beatNumber || 1}/16`;
     $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed} · NEXT: ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage.keyHint;
   } else if (loop.status === 'full') {
     $('#loop-stage').textContent = `FULL LOOP · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
     $('#loop-progress').textContent = `PLAYING: ${completed} · EMPTY STAGES BECOME REST`;
-    $('#loop-keys').textContent = 'REDO 只重录最后一层；其余层继续循环 / REDO LAST LAYER IN PLACE';
+    $('#loop-keys').textContent = '选择任意层 REDO；其余层继续循环 / REDO ONE LAYER IN PLACE';
     $('#status').textContent = `FULL LOOP · ${loop.activeLayerCount} 个演奏层 · ${loop.restLayerCount} 个留白层`;
   }
   redoButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
@@ -1548,6 +1587,10 @@ audio.addEventListener('gesture', (event) => {
 });
 
 $('#play').addEventListener('click', async () => {
+  if (state.mode !== 'play') {
+    setPerformanceMode('star');
+    setMode('play');
+  }
   if (!audio.sequence.length) {
     const first = state.selected || culture().constellations.find((item) => item.starCount >= 3);
     if (first) { showDetail(first); setAudioLandmark(first); }
@@ -1584,6 +1627,7 @@ $('#panic').addEventListener('click', () => {
   state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
+  setPerformanceMode('star');
   particleField.clear();
   state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
 });
@@ -1596,12 +1640,13 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 $$('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
+$('#loop-entry').addEventListener('click', startGuidedLoop);
 $$('.arrangement-mode').forEach((button) => button.addEventListener('click', () => setArrangementMode(button.dataset.arrangement)));
 $$('.performance-mode').forEach((button) => button.addEventListener('click', () => setPerformanceMode(button.dataset.performance)));
 $$('.scene-button').forEach((button) => button.addEventListener('click', () => launchScene(Number(button.dataset.scene))));
 $('#loop-start').addEventListener('click', startGuidedLoop);
 $('#loop-redo').addEventListener('click', () => {
-  const snapshot = audio.redoCurrentLoopLayer();
+  const snapshot = audio.redoCurrentLoopLayer($('#loop-redo-layer').value);
   $('#status').textContent = snapshot
     ? `LOOP · COUNT-IN → REDO ${snapshot.stage?.label || 'LAYER'}`
     : 'LOOP · 暂无可重录层 / NO LAYER TO REDO';
@@ -1611,6 +1656,16 @@ $('#loop-clear').addEventListener('click', () => {
   $('#status').textContent = cleared
     ? `LOOP · ${cleared.toUpperCase()} CLEARED → REST`
     : 'LOOP · 暂无可清除层 / NO LAYER TO CLEAR';
+});
+$('#loop-stop').addEventListener('click', () => {
+  audio.stop();
+  $('#status').textContent = 'LOOP STOPPED · 层已保留 / LAYERS PRESERVED';
+});
+$('#loop-panic').addEventListener('click', () => $('#panic').click());
+$('#loop-exit').addEventListener('click', () => {
+  if (audio.loopSnapshot().active) audio.stop();
+  setPerformanceMode('star');
+  $('#status').textContent = '返回恒星演奏 / RETURN TO STAR PLAY';
 });
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
@@ -1659,12 +1714,23 @@ $('#back-cultures').addEventListener('click', returnToCultureSelection);
 $$('[data-overlay]').forEach((button) => button.addEventListener('click', () => showOverlay(button.dataset.overlay)));
 $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = true; });
 
-document.addEventListener('keydown', (event) => {
+document.addEventListener('keydown', async (event) => {
   const editable = event.target.matches?.('input, textarea, select, [contenteditable="true"]');
   if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && $('#launch').hidden && $('#overlay').hidden && $('#drawer').hidden) {
     if (state.mode === 'play' && /^Digit[0-9]$/.test(event.code)) {
       event.preventDefault();
       launchScene(Number(event.code.slice(-1)));
+      return;
+    }
+    if (state.mode === 'play' && audio.sequence.length && (event.code === 'KeyQ' || event.code === 'KeyW')) {
+      event.preventDefault();
+      const role = event.code === 'KeyQ' ? 'kick' : 'hat';
+      if (role === 'kick') await audio.performanceKick(); else await audio.performanceHat();
+      const loop = audio.loopSnapshot();
+      if (state.performanceMode === 'loop' && loop.active && loop.status === 'recording' && loop.stage?.id === 'drums') {
+        const recorded = audio.recordLoopInput(role === 'kick' ? 0 : 1, { role, audition: false });
+        if (recorded) $('#status').textContent = `${role === 'kick' ? 'Q — KICK' : 'W — HI-HAT'} · QUANTIZED STEP ${recorded.step + 1}`;
+      } else $('#status').textContent = role === 'kick' ? 'Q — KICK' : 'W — HI-HAT';
       return;
     }
     if (state.performanceMode === 'loop' && state.mode === 'play' && state.localView) {
@@ -1706,6 +1772,7 @@ document.addEventListener('keydown', (event) => {
 
 document.addEventListener('keyup', (event) => {
   if (state.performanceMode === 'loop') return;
+  if (event.code === 'KeyQ' || event.code === 'KeyW') return;
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return;
   const gestureId = state.keyboardGestureIds.get(event.code);

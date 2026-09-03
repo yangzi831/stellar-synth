@@ -39,7 +39,7 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .brand-button .brand-return { margin-bottom: 6px; font-size: 9px; letter-spacing: .08em; color: rgba(255,255,255,.42); }
 .brand-button small { display: block; margin-top: 5px; font-size: 9px; letter-spacing: .09em; color: rgba(255,255,255,.34); }
 .mode-nav { position: absolute; top: 18px; left: 50%; display: flex; transform: translateX(-50%); pointer-events: auto; }
-.mode-nav button { min-width: 68px; margin-left: -1px; }
+.mode-nav button { min-width: 96px; min-height: 40px; margin-left: -1px; padding: 0 15px; font-size: 11px; }
 .culture-readout { position: absolute; top: 18px; right: 20px; text-align: right; }
 .culture-readout button { text-align: right; }
 .culture-readout span { display: block; font-size: 9px; letter-spacing: .12em; color: rgba(255,255,255,.34); }
@@ -54,9 +54,12 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .landmark-nav select { width: 100%; height: 33px; padding: 0 28px 0 9px; border: 1px solid #292929; border-radius: 0; outline: 0; background: #070707; color: #858585; font: 9px ui-monospace, monospace; }
 .landmark-nav select:focus { border-color: #777; color: #ccc; }
 .legend { position: absolute; left: 20px; bottom: 20px; font-size: 9px; line-height: 1.6; letter-spacing: .05em; color: rgba(255,255,255,.34); }
-.arrangement-modes { position: absolute; right: 18px; bottom: 66px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.7); pointer-events: auto; }
-.arrangement-modes span { padding: 0 7px; color: #555; font-size: 8px; letter-spacing: .08em; }
-.arrangement-modes button { min-height: 28px; padding: 0 8px; color: #747474; font-size: 8px; }
+.arrangement-modes { position: absolute; right: 18px; bottom: 66px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.78); pointer-events: auto; }
+.arrangement-modes summary { min-width: 148px; padding: 9px 10px; color: #777; font-size: 9px; letter-spacing: .08em; cursor: pointer; list-style: none; }
+.arrangement-modes summary::-webkit-details-marker { display: none; }
+.arrangement-modes[open] summary { border-bottom: 1px solid #242424; color: #aaa; }
+.arrangement-modes > div { display: grid; gap: 3px; padding: 4px; }
+.arrangement-modes button { min-height: 30px; padding: 0 8px; color: #747474; font-size: 9px; text-align: left; }
 .arrangement-modes button.on { color: #080808; }
 .performance-modes { position: absolute; left: 20px; bottom: 66px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.7); pointer-events: auto; }
 .performance-modes span, .track-lanes span, .scene-launcher span { padding: 0 7px; color: #555; font-size: 8px; letter-spacing: .08em; }
@@ -67,22 +70,33 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .scene-launcher { position: absolute; left: 20px; right: 20px; bottom: 103px; display: flex; align-items: center; gap: 3px; overflow-x: auto; padding: 4px; border: 1px solid rgba(255,255,255,.1); background: rgba(5,5,5,.76); pointer-events: auto; scrollbar-width: thin; }
 .scene-launcher button { flex: 0 0 auto; white-space: nowrap; }
 .scene-launcher .scene-auto { margin-left: auto; border-color: #3b3b3b; }
-.loop-panel { position: absolute; left: 20px; bottom: 141px; display: grid; grid-template-columns: auto minmax(170px, 1fr) auto auto auto; align-items: center; gap: 8px; width: min(790px, calc(100vw - 40px)); padding: 7px; border: 1px solid rgba(255,255,255,.13); background: rgba(4,4,4,.88); pointer-events: auto; }
+.loop-panel { position: absolute; left: 50%; bottom: 24px; z-index: 8; display: grid; grid-template-columns: auto minmax(170px, 1fr) repeat(5, auto); align-items: center; gap: 8px; width: min(940px, calc(100vw - 40px)); padding: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(4,4,4,.92); transform: translateX(-50%); pointer-events: auto; }
 .loop-panel span { color: #a2a2a2; font-size: 9px; letter-spacing: .08em; }
 .loop-panel output { overflow: hidden; color: #626262; font-size: 8px; letter-spacing: .05em; text-overflow: ellipsis; white-space: nowrap; }
 .loop-panel #loop-keys { grid-column: 1 / -1; color: #777; }
 .loop-panel button { min-height: 28px; font-size: 8px; }
+.loop-panel select { height: 28px; padding: 0 24px 0 8px; border: 1px solid #292929; border-radius: 0; background: #070707; color: #888; font: 8px ui-monospace, monospace; }
 .loop-panel button:disabled { color: #343434; cursor: default; }
-.loop-performance { position: absolute; left: 50%; top: 47%; z-index: 5; display: grid; grid-template-columns: auto auto auto; align-items: end; gap: 18px; min-width: 310px; transform: translate(-50%, -50%); pointer-events: none; text-align: center; opacity: .9; }
-.loop-performance small { display: block; color: #5c5c5c; font-size: 8px; letter-spacing: .15em; }
-.loop-performance strong { display: block; margin-top: 5px; color: #d2d2d2; font-size: 17px; font-weight: 500; letter-spacing: .08em; }
-.loop-performance span { display: block; margin-top: 4px; color: #777; font-size: 8px; letter-spacing: .08em; }
-.loop-count-in strong { color: #f0f0f0; font-size: 25px; }
-.loop-next strong { color: #888; font-size: 13px; }
-.loop-beats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; width: 220px; margin: 0 auto; }
-.loop-beats i { display: block; height: 3px; border: 1px solid #373737; background: #151515; }
-.loop-beats i.active { border-color: #bdbdbd; background: #bdbdbd; box-shadow: 0 0 8px rgba(220,220,220,.18); }
-.loop-beats i.current { background: #777; }
+.loop-panel .danger { border-color: #555; }
+.loop-performance { position: absolute; left: 50%; top: 48%; z-index: 7; display: grid; grid-template-columns: minmax(360px, 620px); gap: 28px; width: min(680px, calc(100vw - 42px)); transform: translate(-50%, -50%); pointer-events: none; text-align: center; opacity: .96; }
+.loop-performance small { display: block; color: #777; font-size: 12px; letter-spacing: .2em; }
+.loop-performance strong { display: block; margin-top: 9px; color: #e1e1e1; font-size: clamp(30px, 5vw, 58px); font-weight: 400; line-height: 1; letter-spacing: .08em; }
+.loop-performance span { display: block; margin-top: 9px; color: #929292; font-size: 11px; letter-spacing: .09em; }
+.loop-count-in { position: absolute; inset: 50% auto auto 50%; width: 240px; transform: translate(-50%, -50%); }
+.loop-count-in strong { color: #f4f4f4; font-size: clamp(92px, 18vw, 180px); animation: count-pulse .4s ease-out; }
+.loop-current, .loop-next { padding: 18px 22px; border: 1px solid rgba(255,255,255,.09); background: rgba(2,2,2,.48); }
+.loop-next { opacity: .56; }
+.loop-next strong { color: #999; font-size: clamp(20px, 3vw, 34px); }
+.loop-beats { display: grid; grid-template-columns: repeat(16, 1fr); gap: 7px; width: 100%; margin: 22px auto 0; }
+.loop-beats i { display: block; height: 8px; border: 1px solid #3b3b3b; background: #111; }
+.loop-beats i.accent { height: 14px; margin-top: -3px; border-color: #696969; }
+.loop-beats i.bar-accent { height: 11px; margin-top: -1px; border-color: #4c4c4c; }
+.loop-beats i.active { border-color: #f0f0f0; background: #e4e4e4; box-shadow: 0 0 18px rgba(235,235,235,.24); transform: scaleY(1.25); }
+.loop-beats.preview { margin-top: 14px; opacity: .55; }
+.performance-keys { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; color: #888; font-size: 12px; letter-spacing: .08em; }
+.performance-keys b { color: #d0d0d0; font-weight: 500; }
+.performance-keys span { width: 100%; margin: 0; color: #5f5f5f; }
+@keyframes count-pulse { from { opacity: .18; transform: scale(.72); } to { opacity: 1; transform: scale(1); } }
 .dock { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 5px; padding: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(5,5,5,.76); backdrop-filter: blur(12px); pointer-events: auto; }
 .dock .danger { border-color: rgba(255,255,255,.32); }
 .meta-nav { position: absolute; left: 20px; top: 94px; display: flex; gap: 14px; }
@@ -169,6 +183,23 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
 .guide-off .dock { opacity: .14; }
 .guide-off .dock:hover { opacity: 1; }
 
+.performance-view .brand,
+.performance-view .culture-readout,
+.performance-view .status,
+.performance-view .view-tools,
+.performance-view .landmark-nav,
+.performance-view .overview,
+.performance-view .detail,
+.performance-view .legend,
+.performance-view .arrangement-modes,
+.performance-view .performance-modes,
+.performance-view .scene-launcher,
+.performance-view .compare-panel,
+.performance-view .meta-nav,
+.performance-view .dock { opacity: 0; pointer-events: none; }
+.performance-view .mode-nav { opacity: .18; }
+.performance-view .mode-nav:hover { opacity: 1; }
+
 @media (max-width: 900px) {
   .culture-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
   .launch { grid-template-columns: 1fr; grid-template-rows: .68fr 1.32fr; }
@@ -202,13 +233,17 @@ button:hover, button:focus-visible, button.on { outline: none; background: #eded
   .performance-modes { left: 10px; bottom: 99px; max-width: calc(100vw - 20px); overflow-x: auto; }
   .track-lanes { left: 10px; bottom: 136px; max-width: calc(100vw - 20px); }
   .scene-launcher { left: 10px; right: 10px; bottom: 136px; }
-  .loop-panel { left: 10px; bottom: 175px; grid-template-columns: 1fr repeat(3, auto); width: calc(100vw - 20px); }
+  .loop-panel { bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: 1fr repeat(4, auto); width: calc(100vw - 20px); }
   .loop-panel #loop-progress { grid-column: 1 / -1; grid-row: 2; }
   .loop-panel #loop-keys { grid-row: 3; }
-  .loop-performance { top: 43%; min-width: 260px; gap: 10px; }
-  .loop-performance strong { font-size: 14px; }
-  .loop-count-in strong { font-size: 21px; }
-  .loop-beats { width: min(210px, calc(100vw - 40px)); }
+  .loop-performance { top: 44%; width: calc(100vw - 24px); gap: 14px; }
+  .loop-current, .loop-next { padding: 14px 10px; }
+  .loop-performance small { font-size: 9px; }
+  .loop-performance strong { font-size: clamp(26px, 11vw, 44px); }
+  .loop-next strong { font-size: 21px; }
+  .loop-beats { gap: 3px; }
+  .loop-beats i { height: 6px; }
+  .performance-keys { gap: 12px; font-size: 10px; }
   .performance-modes span, .performance-modes button, .track-lanes span, .track-lanes button { white-space: nowrap; }
   .dock button { white-space: nowrap; flex: 0 0 auto; }
   .detail { top: 164px; right: 10px; max-height: calc(100vh - 235px); }

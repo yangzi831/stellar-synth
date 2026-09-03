@@ -51,10 +51,11 @@ assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 B
 assert(audio.includes('const GROOVE_STEPS = 16'), 'Dance groove must use a fixed 4/4 sixteen-step bar.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
-assert(audio.includes('const MASTER_GAIN = 1.32'), 'Raised master level is missing.');
-assert(audio.includes('const MAKEUP_GAIN = 1.22'), 'Output makeup stage is missing.');
+assert(audio.includes('const MASTER_GAIN = 1.4'), 'Raised master level is missing.');
+assert(audio.includes('const MAKEUP_GAIN = 1.28'), 'Output makeup stage is missing.');
 assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
-assert(audio.includes('const MANUAL_GAIN = 1.62'), 'Foreground ManualPerformanceBus level is missing.');
+assert(audio.includes('const MANUAL_GAIN = 1.72'), 'Foreground ManualPerformanceBus level is missing.');
+assert(audio.includes('const BED_GAIN = 0.42'), 'Subtle Cosmic Bed bus level is missing.');
 assert(audio.includes('createOscillator'), 'Synthesis oscillator path is missing.');
 assert(audio.includes('const HOLD_THRESHOLD_MS = 350'), 'The 350ms hold threshold is missing.');
 assert(audio.includes('const TWO_BARS = BEAT * 8'), 'Two-bar parameter cadence is missing.');
@@ -83,7 +84,20 @@ for (const stage of ['extractMusicalControlNodes', 'setPerformanceMode', 'Partic
 for (const method of ['startGuidedLoop', 'beginLoopStage', 'recordLoopInput', 'scheduleLoopPlayback', 'playLoopEvent', 'redoCurrentLoopLayer']) {
   assert(audio.includes(`${method}(`), `Missing guided Loop stage: ${method}`);
 }
-for (const control of ['loop-keys', 'loop-redo']) assert(html.includes(`id="${control}"`), `Missing guided Loop control: ${control}`);
+for (const method of ['currentTransportPosition', 'performanceKick', 'performanceHat', 'prioritizeManualVoices', 'connectBed']) {
+  assert(audio.includes(`${method}(`), `Missing v0.5 playability stage: ${method}`);
+}
+for (const control of ['loop-keys', 'loop-redo', 'loop-redo-layer', 'loop-stop', 'loop-panic', 'loop-exit']) {
+  assert(html.includes(`id="${control}"`), `Missing guided Loop control: ${control}`);
+}
+assert((html.match(/<i><\/i>/g) || []).length >= 32, 'Guided Loop must render CURRENT and NEXT 16-beat rows.');
+assert(html.includes('id="loop-entry"'), 'Primary LOOP entry is missing.');
+assert(html.includes('Q — KICK') && html.includes('W — HI-HAT'), 'Stable Q/W rhythm controls are missing.');
+assert(!app.includes("['KeyQ', 'Q']") && !app.includes("['KeyW', 'W']"), 'Q/W must not remain in the Star keyboard mapping.');
+assert(app.includes("event.code === 'KeyQ'") && app.includes("event.code === 'KeyW'"), 'Global Q/W rhythm keyboard handlers are missing.');
+assert(audio.includes("options.role === 'kick' ? 4"), 'Kick quantization must use a one-beat grid.');
+assert(audio.includes("options.role === 'hat' ? 2"), 'Hi-hat quantization must use a half-beat grid.');
+assert(audio.includes('session.loopOriginStep'), 'Guided Loop layers must share one transport origin.');
 assert(audio.includes('resting: []'), 'Guided Loop must preserve empty stages as intentional rests.');
 assert(app.includes('EMPTY STAGES BECOME REST'), 'Guided Loop must explain empty-stage rest behaviour.');
 for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-poly', 'dark-pulse', 'fm-metallic']) {
