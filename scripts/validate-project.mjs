@@ -47,18 +47,25 @@ for (const performance of ['star', 'loop']) {
 for (let scene = 0; scene <= 9; scene += 1) {
   assert(html.includes(`data-scene="${scene}"`), `Missing Scene control: ${scene}`);
 }
-assert(audio.includes('export const BPM = 150'), 'Audio engine must run at 150 BPM.');
+assert(audio.includes('export const BPM = 123'), 'Audio engine must run at the 123 BPM deep-techno reference tempo.');
 assert(audio.includes('const GROOVE_STEPS = 16'), 'Dance groove must use a fixed 4/4 sixteen-step bar.');
 assert(audio.includes('createDynamicsCompressor'), 'D5 dynamics path is missing.');
 assert(audio.includes('this.limiter'), 'Final output limiter is missing.');
 assert(audio.includes('const MASTER_GAIN = 1.9'), 'Raised master level is missing.');
 assert(audio.includes('const MAKEUP_GAIN = 1.75'), 'Output makeup stage is missing.');
 assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
-assert(audio.includes('const MUSIC_GAIN = 1.25'), 'Foreground musical arrangement bus is missing.');
+assert(audio.includes('const MUSIC_GAIN = 1.34'), 'Foreground musical arrangement bus is missing.');
 assert(audio.includes('const DRUM_GAIN = 0.52'), 'Controlled drum bus level is missing.');
-assert(audio.includes('this.musicBus.connect(this.musicRoomSend).connect(this.reverbSend)'), 'Music ambience must not force drums through the global reverb send.');
+assert(audio.includes("this.reverbHighpass.type = 'highpass'"), 'Reverb input must remove low-frequency mud.');
+assert(audio.includes('this.reverbPreDelay.delayTime.value'), 'Reverb must preserve dry attacks with pre-delay.');
+assert(audio.includes('const GROOVE_TEMPLATES = ['), 'Curated shared GrooveTemplates are missing.');
+assert(!audio.includes('while (this.nextTick'), 'A free-running StarEvent clock must not compete with the shared groove clock.');
+assert(audio.includes('motifSlots:') && audio.includes('constellationSlots:'), 'GrooveTemplates must reserve shared motif and constellation event pockets.');
+assert(audio.includes('scheduleConstellationEventLane('), 'Star events must be locked to the shared arrangement clock.');
+assert(audio.includes('this.constellationGroove.motifSlots'), 'Constellation motifs must read the shared GrooveTemplate slots.');
+assert(audio.includes('this.constellationGroove.constellationSlots'), 'PATH/GROUP/FRAGMENT events must read the shared GrooveTemplate slots.');
 assert(audio.includes('const MANUAL_GAIN = 1.95'), 'Foreground ManualPerformanceBus level is missing.');
-assert(audio.includes('const BED_GAIN = 0.16'), 'Subtle Cosmic Bed bus level is missing.');
+assert(audio.includes('const BED_GAIN = 0.105'), 'Subtle Cosmic Bed bus level is missing.');
 assert(audio.includes('createOscillator'), 'Synthesis oscillator path is missing.');
 assert(audio.includes('const HOLD_THRESHOLD_MS = 350'), 'The 350ms hold threshold is missing.');
 assert(audio.includes('const TWO_BARS = BEAT * 8'), 'Two-bar parameter cadence is missing.');
