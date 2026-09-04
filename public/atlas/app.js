@@ -1,4 +1,5 @@
 import { SequencerAudio, BPM } from './audio-engine.js';
+import { VisualBackground } from './visual-background.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -18,6 +19,7 @@ const overviewCanvas = $('#overview');
 const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
+const visualBackground = new VisualBackground($('#visual-bg'));
 const mobileDetailQuery = window.matchMedia('(max-width: 680px)');
 const activeTouchPointers = new Map();
 let pinchGesture = null;
@@ -95,6 +97,7 @@ function resize() {
   canvas.width = Math.floor(width * dpr);
   canvas.height = Math.floor(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  visualBackground.resize();
 }
 
 function culture(id = state.visibleCultureId) { return state.cultures.get(id); }
@@ -727,6 +730,7 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
   state.visibleStarIds = state.mode === 'compare'
     ? new Set([...culture(state.cultureId).stars, ...culture(state.compareId).stars])
     : new Set(culture(id).stars);
+  visualBackground.setCulture(id);
   state.selected = null;
   state.activeStep = -1;
   audio.releaseAll(false);
@@ -1275,7 +1279,19 @@ function drawGestureVisuals() {
 
 function draw(now) {
   frame += 1;
-  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.23)' : '#020202';
+  const musicState = audio.visualMusicState();
+  visualBackground.setAudioData({
+    amplitude: musicState.overallEnergy,
+    energy: musicState.overallEnergy,
+    bass: musicState.kickEnvelope,
+    mid: Math.max(musicState.synthEnvelope, musicState.leadEnvelope),
+    high: musicState.percEnvelope,
+    beat: musicState.barPhase,
+    drone: musicState.padEnvelope,
+  });
+  visualBackground.render(now / 1000);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.23)' : 'rgba(2,2,2,.16)';
   ctx.fillRect(0, 0, width, height);
   if (state.transition) {
     const progress = clamp((now - state.transition.started) / state.transition.duration, 0, 1);
@@ -1581,6 +1597,7 @@ audio.addEventListener('star-event', (event) => {
   if (index >= 0) state.activeStep = index;
   state.starEventVisuals.push(detail);
   particleField.queue(detail, 'star');
+  (detail.event?.starIds || []).forEach((id) => visualBackground.triggerStar(state.stars.get(id) || { id }));
   $('#arrangement-modes').dataset.profile = detail.profileId;
   $('#arrangement-modes').dataset.eventMode = detail.mode;
   $('#arrangement-modes').dataset.eventSize = String(detail.event.starIds?.length || 0);
@@ -1588,6 +1605,24 @@ audio.addEventListener('star-event', (event) => {
 });
 
 audio.addEventListener('track-event', (event) => particleField.queue(event.detail, 'track'));
+
+audio.addEventListener('track-event', (event) => {
+  const detail = event.detail || {};
+  const eventType = detail.type || detail.trackId;
+  if (eventType === 'kick' || eventType === 'drums' || eventType === 'kick-hit') visualBackground.triggerEvent({ type: 'kick', intensity: detail.intensity ?? detail.amount ?? 0.55 });
+  else if (eventType === 'hat' || eventType === 'closed-hat' || eventType === 'open-hat') visualBackground.triggerEvent({ type: 'hat', intensity: detail.intensity ?? detail.amount ?? 0.4 });
+});
+
+audio.addEventListener('gesture', (event) => {
+  const detail = event.detail || {};
+  const star = detail.step || detail.star || (detail.id ? state.stars.get(detail.id) : null);
+  if (star) visualBackground.triggerStar(star);
+  if (detail.phase === 'press') visualBackground.triggerEvent({ type: 'star', intensity: 0.52 });
+});
+
+audio.addEventListener('state', (event) => {
+  if (event.detail?.panic) visualBackground.dispose();
+});
 
 audio.addEventListener('arrangement-state', (event) => {
   const detail = event.detail;
