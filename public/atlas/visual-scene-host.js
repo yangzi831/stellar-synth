@@ -25,7 +25,17 @@ function wrap(instance, { canvas, host, audio, destroy = 'dispose', starMode = '
   const call = (names, ...args) => { for (const name of names) if (typeof instance?.[name] === 'function') return instance[name](...args); };
   return {
     setAudioData(next = {}) { Object.assign(audio, next); call(['setAudioData', 'setAudioFrame', 'pushAudioFrame', 'pushAudio', 'feedAudio'], { ...audio, sustain: audio.drone }); },
-    setParams(next = {}) { call(['setParams', 'setSettings'], next); },
+    // Authored adapters expose slightly different configuration names. Keep
+    // the public host API uniform, and also forward tuning to an underlying
+    // engine when an adapter (notably Scene 15) wraps one.
+    setParams(next = {}) {
+      call(['setParams', 'setSettings', 'setConfig'], next);
+      if (instance?.engine && instance.engine !== instance) {
+        instance.engine.setParams?.(next);
+        instance.engine.setSettings?.(next);
+        instance.engine.setConfig?.(next);
+      }
+    },
     setCulture(culture) { call(['setCulture'], culture); },
     triggerStar(star = {}) {
       if (starMode === 'data' && call(['triggerStar'], star)) return;
@@ -53,21 +63,21 @@ const SCENE_PROFILES = Object.freeze({
   // Atlas view is visible but deliberately held behind the foreground map.
   // Focus/playing returns the authored scene to essentially its native light.
   'constellation-cipher': { atlas: .74, focus: .98, atlasFilter: 'brightness(.84) saturate(.72) contrast(1.04)', focusFilter: 'brightness(1) saturate(.86) contrast(1.02)', params: { accentColor: '#4d5157', secondaryColor: '#8a8e94', audioSensitivity: .90, lineCount: 44 } },
-  'invisible-universe': { atlas: .88, focus: 1, atlasFilter: 'brightness(1.05) contrast(1.04)', focusFilter: 'brightness(1) contrast(1.02)', params: { glow: .62, density: .62, sensitivity: .92, links: .18 }, atlasParams: { glow: .72, density: .68, sensitivity: 1.05 } },
-  'audio-reactive-cosmos': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.82) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.94) contrast(1.02)', params: { brightness: .68, bloomStrength: .38, audioReactivity: .92 } },
-  'constellation-pulse-a': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { colorCoral: '#8b7770', colorBone: '#858585', colorBoneSoft: '#a3a3a3' } },
-  'constellation-pulse-b': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.90) contrast(1.01)', params: { colorCoral: '#777b81', colorBone: '#858a90', colorBoneSoft: '#aeb2b6' } },
+  'invisible-universe': { atlas: .88, focus: 1, atlasFilter: 'brightness(1.05) contrast(1.04)', focusFilter: 'brightness(1) contrast(1.02)', params: { glow: .62, density: .62, sensitivity: .92, links: .18 }, atlasParams: { glow: .72, density: .68, sensitivity: 1.05 }, focusParams: { glow: .86, density: .78, sensitivity: 1.20, links: .24 } },
+  'audio-reactive-cosmos': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.82) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.94) contrast(1.02)', params: { brightness: .68, bloomStrength: .38, audioReactivity: .92 }, focusParams: { brightness: .82, bloomStrength: .56, audioReactivity: 1.28, flowStrength: 1.14, gravityStrength: 1.08, rotationSpeed: .062 } },
+  'constellation-pulse-a': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { colorCoral: '#8b7770', colorBone: '#858585', colorBoneSoft: '#a3a3a3' }, focusParams: { particleOpacity: .72, bassExpansion: 1.34, midFlow: 1.24, highShimmer: 1.30, beatPulse: 1.30, flowSpeed: 1.12, swirlBase: .16, holdGain: .32 } },
+  'constellation-pulse-b': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.90) contrast(1.01)', params: { colorCoral: '#777b81', colorBone: '#858a90', colorBoneSoft: '#aeb2b6' }, focusParams: { particleOpacity: .72, bassExpansion: 1.30, midFlow: 1.22, highShimmer: 1.28, beatPulse: 1.28, flowSpeed: 1.10, swirlBase: .15, holdGain: .30 } },
   'aurora-core': { atlas: .68, focus: .94, atlasFilter: 'brightness(.78) saturate(.76) contrast(1.07)', focusFilter: 'brightness(.96) saturate(.88) contrast(1.02)' },
-  'resonant-nebula': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.01)', params: { bloom: .5, sensitivity: .68 }, atlasParams: { bloom: .68, sensitivity: .82 } },
-  'orbital-cartography': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { glow: .70, particleCount: 30000 }, atlasParams: { glow: .84 } },
-  'stellar-vortex-core': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { particleCount: 30000, glow: 1 }, atlasParams: { glow: 1.12 } },
-  'thread-veil': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.16) saturate(.92) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: 1, glow: 1, veilOpacity: 1, rotationSpeed: .02 }, atlasParams: { density: 1.12, glow: 1.10, veilOpacity: 1.08, rotationSpeed: .026 } },
-  'constellation-weave': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.84) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleCount: 56000, audioSensitivity: .88, glowStrength: 1 }, atlasParams: { audioSensitivity: .98, glowStrength: 1.08 } },
-  'night-stardust': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.02)', params: { particleCount: 36000, audioSensitivity: 1, bloom: 1 }, atlasParams: { audioSensitivity: 1.04, bloom: 1.08 } },
+  'resonant-nebula': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.01)', params: { bloom: .5, sensitivity: .68 }, atlasParams: { bloom: .68, sensitivity: .82 }, focusParams: { bloom: .62, sensitivity: 1.06, gravity: .82, rotation: .78 } },
+  'orbital-cartography': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { glow: .70, particleCount: 30000 }, atlasParams: { glow: .84 }, focusParams: { glow: 1.18, vortexStrength: 1.34, baseSpin: 1.24, parallax: .34 } },
+  'stellar-vortex-core': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { particleCount: 30000, glow: 1 }, atlasParams: { glow: 1.12 }, focusParams: { intensity: 1.22, bassResponse: 1.28, highResponse: 1.24, swirlSpeed: 1.28, glow: 1.18 } },
+  'thread-veil': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.16) saturate(.92) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: 1, glow: 1, veilOpacity: 1, rotationSpeed: .02 }, atlasParams: { density: 1.12, glow: 1.10, veilOpacity: 1.08, rotationSpeed: .026 }, focusParams: { density: 1.22, glow: 1.22, veilOpacity: 1.16, rotationSpeed: .034, parallax: 1.15 } },
+  'constellation-weave': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.84) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleCount: 56000, audioSensitivity: .88, glowStrength: 1 }, atlasParams: { audioSensitivity: .98, glowStrength: 1.08 }, focusParams: { audioSensitivity: 1.28, glowStrength: 1.24, rotationSpeed: .014, lineOpacity: [.09, .44], pointerInfluence: 1.16 } },
+  'night-stardust': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.02)', params: { particleCount: 36000, audioSensitivity: 1, bloom: 1 }, atlasParams: { audioSensitivity: 1.04, bloom: 1.08 }, focusParams: { audioSensitivity: 1.30, fieldStrength: 1.18, bloom: 1.18, motionSpeed: 1.18 } },
   'silver-meridian': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)' },
-  'audio-reactive-star-chart': { atlas: .90, focus: .96, atlasFilter: 'brightness(1.08) saturate(.90) contrast(1.02)', focusFilter: 'brightness(.98)' },
-  'supernova-pulse': { atlas: .94, focus: .96, atlasFilter: 'brightness(1.16) saturate(.94) contrast(1.02)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleSize: .05, brightnessGain: .34, beatGain: 1, coreExpandGain: .40 }, atlasParams: { particleSize: .058, brightnessGain: .50, beatGain: 1.15, coreExpandGain: .48 } },
-  'concentric-field': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.15) saturate(.90) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: .84, energy: .62, colorMix: .40, interactionGain: 1, rotationSpeed: 1 }, atlasParams: { density: .92, energy: .74, colorMix: .42, interactionGain: 1.22, rotationSpeed: 1.18 } },
+  'audio-reactive-star-chart': { atlas: .90, focus: .96, atlasFilter: 'brightness(1.08) saturate(.90) contrast(1.02)', focusFilter: 'brightness(.98)', focusParams: { weights: { nebula: .92, chart: 1.18, core: 1.24 }, parallax: .18, audioSmoothing: .12, coreGlow: .38 } },
+  'supernova-pulse': { atlas: .94, focus: .96, atlasFilter: 'brightness(1.16) saturate(.94) contrast(1.02)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleSize: .05, brightnessGain: .34, beatGain: 1, coreExpandGain: .40 }, atlasParams: { particleSize: .058, brightnessGain: .50, beatGain: 1.15, coreExpandGain: .48 }, focusParams: { particleSize: .064, brightnessGain: .56, beatGain: 1.42, coreExpandGain: .62, burstStrength: .48, spinSpeed: .078 } },
+  'concentric-field': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.15) saturate(.90) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: .84, energy: .62, colorMix: .40, interactionGain: 1, rotationSpeed: 1 }, atlasParams: { density: .92, energy: .74, colorMix: .42, interactionGain: 1.22, rotationSpeed: 1.18 }, focusParams: { density: .94, energy: .94, colorMix: .46, interactionGain: 1.72, rotationSpeed: 1.52 } },
 });
 
 function suppressCentralMarker(instance) {
@@ -118,7 +128,10 @@ export class VisualSceneHost {
     this.host.style.setProperty('--visual-opacity', String(opacity));
     const filter = this.presentationMode === 'atlas' ? profile.atlasFilter : profile.focusFilter;
     this.host.style.setProperty('--visual-filter', filter || 'none');
-    this.api.setParams({ ...(profile.params || {}), ...(this.presentationMode === 'atlas' ? profile.atlasParams || {} : {}) });
+    this.api.setParams({
+      ...(profile.params || {}),
+      ...(this.presentationMode === 'atlas' ? profile.atlasParams || {} : profile.focusParams || {})
+    });
     this.host.dataset.visualPresentation = this.presentationMode;
   }
   get activeScene() { return this.api.scene; }
