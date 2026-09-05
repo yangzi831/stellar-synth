@@ -8,9 +8,11 @@ const app = fs.readFileSync(new URL('../public/atlas/app.js', import.meta.url), 
 const css = fs.readFileSync(new URL('../public/atlas/app.css', import.meta.url), 'utf8');
 const sampleManifest = JSON.parse(fs.readFileSync(new URL('../public/audio/culture-samples.json', import.meta.url), 'utf8'));
 const atmosphereManager = fs.readFileSync(new URL('../public/atlas/audio/atmosphere-manager.js', import.meta.url), 'utf8');
+const padLibrary = fs.readFileSync(new URL('../public/atlas/audio/pad-library.js', import.meta.url), 'utf8');
 const samplePlayer = fs.readFileSync(new URL('../public/atlas/audio/sample-player.js', import.meta.url), 'utf8');
 const civilizationSamples = fs.readFileSync(new URL('../public/atlas/audio/civilization-samples.js', import.meta.url), 'utf8');
 const { instrumentSetForCulture } = await import(new URL('../public/atlas/audio/civilization-samples.js', import.meta.url));
+const { padForCulture } = await import(new URL('../public/atlas/audio/pad-library.js', import.meta.url));
 const starIds = new Set(data.stars.map((star) => star.id));
 const cultures = new Map(data.cultures.map((culture) => [culture.id, culture]));
 
@@ -168,6 +170,12 @@ for (const cultureId of ['western', 'tukano', 'inuit']) assert(!instrumentSetFor
 assert(sampleManifest.sharedInstrumentPool?.length === 6, 'The complete screenshot-provided shared sample pool is missing.');
 assert(atmosphereManager.includes('AudioBufferSourceNode') || atmosphereManager.includes('createBufferSource'), 'Atmosphere layer must use Web Audio buffer sources.');
 assert(atmosphereManager.includes('source.loop = true') && atmosphereManager.includes('fadeInSeconds'), 'Atmosphere layer loop/fade contract is missing.');
+assert(padLibrary.includes('427454__eardeer__fieldsofhope.mp3'), 'Fourth atmosphere pad is missing from the runtime catalogue.');
+for (const cultureId of ['chinese', 'boorong', 'egyptian', 'tongan', 'aztec']) {
+  assert(padForCulture(cultureId)?.id === 'fieldsofhope', `${cultureId} must use the fourth atmosphere pad.`);
+}
+assert(padForCulture('indian')?.id === 'sergequadrad', 'Existing Indian atmosphere mapping changed unexpectedly.');
+assert(padForCulture('western')?.id === 'newlocknew', 'Existing Western atmosphere mapping changed unexpectedly.');
 assert(samplePlayer.includes('playForStar') && samplePlayer.includes('this.engine.reverbSend'), 'Instrument sample routing contract is missing.');
 assert(civilizationSamples.includes('CULTURE_INSTRUMENTS') && civilizationSamples.includes('instrumentForStar'), 'Civilization sample mapping is missing.');
 for (const file of [...Object.values(sampleManifest.atmosphere).map((entry) => entry.file), ...Object.values(sampleManifest.instruments).flat()]) {
@@ -178,6 +186,7 @@ for (const entry of sampleManifest.sharedInstrumentPool) {
   assert(/\.mp3$/i.test(entry.file), `Non-MP3 shared instrument found: ${entry.file}`);
   assert(fs.existsSync(new URL(`../public/audio/${entry.file}`, import.meta.url)), `Missing shared instrument: ${entry.file}`);
 }
+assert(fs.existsSync(new URL('../public/audio/atmosphere/427454__eardeer__fieldsofhope.mp3', import.meta.url)), 'Missing fourth atmosphere MP3.');
 for (const cultureId of ['chinese', 'western', 'indian']) assert(sampleManifest.cultures[cultureId], `Missing sample slots for ${cultureId}.`);
 assert(app.includes('audio.visualMusicState()'), 'Particles must read the shared musical state.');
 assert(audio.includes("new CustomEvent('star-event'"), 'Audio and visual grouped events must share StarEvent timing.');
