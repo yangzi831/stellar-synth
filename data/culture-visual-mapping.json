@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "policy": "low-contrast-background-adapter",
+  "scenes": {
+    "chinese": { "visual": "concentric-field", "visualNumber": 19, "name": "Concentric Field", "reason": "同心场与星官秩序呼应，低亮度的环形结构不会抢走前景星线。" },
+    "indian": { "visual": "resonant-nebula", "visualNumber": 6, "name": "Resonant Nebula", "reason": "缓慢呼吸的星云适合围绕稳定中心音的漂移感。" },
+    "western": { "visual": "audio-reactive-star-chart", "visualNumber": 13, "name": "Audio Reactive Star Chart", "reason": "清晰的几何节点和线性结构衬托西方古典星图的连线关系。" },
+    "egyptian": { "visual": "constellation-pulse-a", "visualNumber": 5, "name": "Constellation Pulse A", "reason": "克制的脉冲与几何节律提供仪式性的时间感。" },
+    "hawaiian_starlines": { "visual": "orbital-cartography", "visualNumber": 16, "name": "Orbital Cartography", "reason": "轨道与航向感强化海洋星线和导航传统的空间想象。" },
+    "maori": { "visual": "stellar-vortex-core", "visualNumber": 12, "name": "Stellar Vortex Core", "reason": "中心旋涡与层叠轨迹形成强烈但不喧闹的空间核心。" },
+    "tongan": { "visual": "thread-veil", "visualNumber": 4, "name": "Thread Veil", "reason": "细线织体表现航海路径和口述星图的连续关系。" },
+    "inuit": { "visual": "aurora-core", "visualNumber": 2, "name": "Aurora Core", "reason": "极低亮度的极光层提供冷色环境，同时保持星点清晰。" },
+    "northern_andes": { "visual": "constellation-cipher", "visualNumber": 7, "name": "Constellation Cipher", "reason": "节点与短线的脉冲结构适合重复、呼应式的山地星图感。" },
+    "tukano": { "visual": "audio-reactive-cosmos", "visualNumber": 11, "name": "Audio Reactive Cosmos", "reason": "宽阔的粒子流与音频能量响应形成连续的宇宙背景。" },
+    "navajo": { "visual": "constellation-weave", "visualNumber": 9, "name": "Constellation Weave", "reason": "织网式结构强调星点之间的关系，而不使用具象民族符号。" },
+    "blackfoot": { "visual": "supernova-pulse", "visualNumber": 15, "name": "Supernova Pulse", "reason": "低频脉冲在关键节拍时扩大，适合强调天空故事中的力量感。" },
+    "boorong": { "visual": "night-stardust", "visualNumber": 10, "name": "Night Stardust", "reason": "稀疏星尘和暗色空间保留夜空观察的安静感。" },
+    "aztec": { "visual": "constellation-pulse-b", "visualNumber": 14, "name": "Constellation Pulse B", "reason": "分段式几何脉冲提供结构化的仪式节奏。" },
+    "tupi": { "visual": "invisible-universe", "visualNumber": 1, "name": "Invisible Universe", "reason": "近乎隐形的粒子层强调暗夜与星图前景，不制造明亮宇宙特效。" }
+  }
+}

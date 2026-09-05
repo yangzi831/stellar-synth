@@ -1,4 +1,8 @@
 import { SequencerAudio, BPM } from './audio-engine.js';
+import { VisualSceneHost } from './visual-scene-host.js';
+import { AtmospherePadManager } from './audio/atmosphere-manager.js';
+import { atmosphereForCulture } from './audio/pad-library.js';
+import { CivilizationSamplePlayer } from './audio/sample-player.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -18,8 +22,29 @@ const overviewCanvas = $('#overview');
 const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
+const visualBackground = new VisualSceneHost($('#visual-bg'));
+const atmosphere = new AtmospherePadManager(audio);
+const cultureAtmosphere = new AtmospherePadManager(audio, {
+  resolvePad: atmosphereForCulture,
+  reverbSend: 0.16,
+});
+const civilizationSamples = new CivilizationSamplePlayer(audio);
+audio.samplePlayer = civilizationSamples;
+const mobileDetailQuery = window.matchMedia('(max-width: 680px)');
+const activeTouchPointers = new Map();
+let pinchGesture = null;
 
 const KEYBOARD_STEPS = [
+  ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'], ['KeyY', 'Y'], ['KeyU', 'U'],
+  ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
+  ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
+  ['KeyH', 'H'], ['KeyJ', 'J'], ['KeyK', 'K'], ['KeyL', 'L'],
+  ['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M'],
+];
+
+// PLAY reserves Q/W for kick and hi-hat. LOOP deliberately owns the whole
+// alphabet so every key becomes the instrument of the layer being recorded.
+const LOOP_KEYBOARD_STEPS = [
   ['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'],
   ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P'],
   ['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'],
@@ -65,6 +90,9 @@ const state = {
   compareSwitching: false,
   compareTimer: null,
   detailCollapsed: false,
+  detailCollapsePreference: null,
+  lastCountInBeat: 0,
+  performanceHitTimer: null,
 };
 
 let width = 0;
@@ -79,6 +107,7 @@ function resize() {
   canvas.width = Math.floor(width * dpr);
   canvas.height = Math.floor(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  visualBackground.resize();
 }
 
 function culture(id = state.visibleCultureId) { return state.cultures.get(id); }
@@ -168,10 +197,10 @@ class ParticleField {
         this.spawn(point, 7, { seed: frame + index * 61, speed: 43, life: 0.55, size: 0.5, alpha: 0.39, motion: 'radial' });
       } else if (event.type === 'perc' || event.type === 'glitch' || event.type === 'count-in') {
         this.spawn(point, event.type === 'glitch' ? 8 : 5, { seed: frame + index * 53, speed: 36, life: 0.38, size: 0.55, alpha: 0.42, motion: musicState.particleMotion });
-      } else if (event.type === 'synth' || event.type === 'synth-sequence' || event.type === 'lead' || event.type === 'melodic-phrase') {
-        const melodic = event.type === 'lead' || event.type === 'melodic-phrase';
+      } else if (event.type === 'synth' || event.type === 'synth-sequence' || event.type === 'lead' || event.type === 'melodic-phrase' || event.type === 'constellation-motif') {
+        const melodic = event.type === 'lead' || event.type === 'melodic-phrase' || event.type === 'constellation-motif';
         this.spawn(point, melodic ? 9 : 6, { seed: frame + index * 43, speed: 16, life: melodic ? 1.8 : 1.1, directionX: (index % 2 ? -1 : 1) * 14, size: 0.75, motion: musicState.particleMotion });
-      } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture') {
+      } else if (event.type === 'pad' || event.type === 'drone' || event.type === 'texture' || event.type === 'cosmic-bed' || event.type === 'eclipse-bed') {
         this.spawn(point, 4, { seed: frame + index * 37, speed: 6, life: 2.8, size: 0.65, alpha: 0.18, motion: musicState.particleMotion });
       }
     });
@@ -240,6 +269,8 @@ class ParticleField {
       stage.dataset.section = musicState.currentSection;
       stage.dataset.energy = musicState.overallEnergy.toFixed(2);
       stage.dataset.musicCulture = musicState.currentCulture;
+      stage.dataset.arrangementPhase = musicState.arrangementPhase || 'birth';
+      stage.dataset.motif = musicState.motifSignature || '';
       stage.dataset.particleMotion = musicState.particleMotion;
       stage.dataset.rmsDb = Number.isFinite(toDb(this.meterRms)) ? toDb(this.meterRms).toFixed(1) : '-inf';
       stage.dataset.peakDb = Number.isFinite(toDb(this.meterPeak)) ? toDb(this.meterPeak).toFixed(1) : '-inf';
@@ -276,7 +307,8 @@ function chineseDetailStory(item, current) {
   return [structure, landmarkStory || cultureStory].filter(Boolean).join('。').replace(/。。+/g, '。');
 }
 
-function setDetailCollapsed(collapsed) {
+function setDetailCollapsed(collapsed, remember = false) {
+  if (remember) state.detailCollapsePreference = collapsed;
   state.detailCollapsed = collapsed;
   $('#detail').classList.toggle('collapsed', collapsed);
   $('#detail-collapse').textContent = collapsed ? '展开介绍 +' : '收起介绍 −';
@@ -293,11 +325,35 @@ function keyboardBinding(index) {
 function keyboardStepIndex(event) {
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return -1;
-  const index = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
-  return index < audio.sequence.length ? index : -1;
+  return base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
 }
 
-async function pressInteractiveStep(step, index, id) {
+function loopKeyboardStepIndex(event) {
+  return LOOP_KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
+}
+
+function loopKeyboardBinding(index) {
+  const entry = LOOP_KEYBOARD_STEPS[index];
+  return entry ? { code: entry[0], label: entry[1] } : null;
+}
+
+function showPerformanceHit(key, role, kind = 'star') {
+  const feedback = $('#performance-hit');
+  if (!feedback) return;
+  if (state.performanceHitTimer) window.clearTimeout(state.performanceHitTimer);
+  $('#performance-hit-key').textContent = key;
+  $('#performance-hit-role').textContent = role;
+  feedback.dataset.kind = kind;
+  feedback.hidden = false;
+  feedback.animate([
+    { opacity: 0.12, transform: 'translate(-50%, -50%) scale(.72)' },
+    { opacity: 1, transform: 'translate(-50%, -50%) scale(1.04)', offset: 0.34 },
+    { opacity: 0.78, transform: 'translate(-50%, -50%) scale(1)' },
+  ], { duration: 420, easing: 'ease-out' });
+  state.performanceHitTimer = window.setTimeout(() => { feedback.hidden = true; }, 620);
+}
+
+async function pressInteractiveStep(step, index, id, keyLabel = 'STAR') {
   const previousRequest = state.gestureRequests.get(id);
   if (previousRequest) previousRequest.released = true;
   audio.release(id, true);
@@ -316,6 +372,7 @@ async function pressInteractiveStep(step, index, id) {
     nodes: [{ x: 0, y: 0, parent: -1, secondaryParent: -1, bornAt: snapshot.pressedAt, scale: 1 }],
   };
   state.gestureVisuals.set(id, gesture);
+  showPerformanceHit(keyLabel, `STAR · HIP ${step.id}`, 'star');
   if (request.released) audio.release(id, false);
 }
 
@@ -506,20 +563,39 @@ function setAudioLandmark(item) {
     landmarkId: item?.id,
     kind: item?.kind,
   }, { mode: state.arrangementMode, events });
+  void civilizationSamples.prepareCulture(state.visibleCultureId);
   state.starEventVisuals = [];
+}
+
+function startAtmosphereLayers(cultureId = state.visibleCultureId) {
+  void civilizationSamples.prepareCulture(cultureId);
+  void atmosphere.playForCulture(cultureId).catch((error) => {
+    console.warn('Atmosphere pad unavailable', error);
+  });
+  void cultureAtmosphere.playForCulture(cultureId).catch((error) => {
+    console.warn('Culture atmosphere unavailable', error);
+  });
+}
+
+function stopAtmosphereLayers(options = {}) {
+  atmosphere.stop(options);
+  cultureAtmosphere.stop(options);
 }
 
 function setPerformanceMode(mode) {
   if (!['star', 'loop'].includes(mode)) return;
   state.performanceMode = mode;
+  document.body.classList.toggle('performance-view', mode === 'loop' && state.mode === 'play');
+  $('#loop-entry').classList.toggle('on', mode === 'loop' && state.mode === 'play');
   $$('.performance-mode').forEach((button) => button.classList.toggle('on', button.dataset.performance === mode));
   $('#loop-panel').hidden = mode !== 'loop' || state.mode !== 'play';
+  $('#loop-performance').hidden = mode !== 'loop' || state.mode !== 'play';
   $('#keyboard-note').textContent = mode === 'star'
-    ? `恒星演奏 / STAR PLAY · QWERTY 字母键 · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
-    : `引导循环 / GUIDED LOOP · 系统自动带你录制 DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE`;
+    ? `Q — KICK · W — HI-HAT · E–P / A–L / Z–M — STARS · PRESS · HOLD >350ms · RELEASE 2.8s TAIL`
+    : `全部字母键 = 当前音色 · ALL LETTER KEYS = CURRENT INSTRUMENT · 16 BEATS · DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE`;
   $('#status').textContent = mode === 'star'
     ? 'STAR · QWERTY 字母键与触摸直接演奏恒星'
-    : 'LOOP · 点击 START · 1 BAR COUNT-IN · 自动逐层录制';
+    : 'LOOP · 点击 START · 8 BEAT COUNT-IN · 每层 16 BEATS · 自动逐层录制';
 }
 
 async function launchScene(number) {
@@ -537,10 +613,25 @@ async function launchScene(number) {
 }
 
 async function startGuidedLoop() {
+  if (state.mode !== 'play') setMode('play');
+  if (!state.selected) {
+    const first = culture().constellations.find((item) => item.starCount >= 3);
+    if (first) {
+      showDetail(first);
+      await enterLandmark(first, false);
+    }
+  } else if (!state.localView) await enterLandmark(state.selected, false);
   setPerformanceMode('loop');
+  const existing = audio.loopSnapshot();
+  if (existing.active && ['count-in', 'recording', 'full'].includes(existing.status)) {
+    $('#status').textContent = existing.status === 'full'
+      ? 'LOOP · 所有已录层正在循环 / ALL ACTIVE LAYERS PLAYING'
+      : `LOOP · ${existing.currentStage || existing.status.toUpperCase()} · 录制进行中`;
+    return;
+  }
   const snapshot = await audio.startGuidedLoop();
-  $('#loop-start').textContent = '重新录制 RECORD AGAIN';
-  $('#status').textContent = `LOOP · COUNT-IN 1 BAR · ${snapshot.status.toUpperCase()}`;
+  startAtmosphereLayers(state.visibleCultureId);
+  $('#status').textContent = `LOOP · COUNT-IN 8 BEATS · ${snapshot.status.toUpperCase()}`;
 }
 
 async function triggerControlNode(controlIndex) {
@@ -558,6 +649,7 @@ function setArrangementMode(mode) {
   if (!['path', 'group', 'fragment'].includes(mode)) return;
   state.arrangementMode = mode;
   $$('.arrangement-mode').forEach((button) => button.classList.toggle('on', button.dataset.arrangement === mode));
+  $('#structure-summary').textContent = `结构 STRUCTURE · ${mode.toUpperCase()}`;
   if (state.selected) setAudioLandmark(state.selected);
   $('#status').textContent = `${mode.toUpperCase()} · ${mode === 'path' ? '路径旋律 / MELODIC ROUTE' : mode === 'group' ? '拓扑群组 / TOPOLOGICAL VOICING' : '碎片闪烁 / POINTILLISTIC BURSTS'}`;
 }
@@ -565,6 +657,7 @@ function setArrangementMode(mode) {
 function resetView() {
   state.view = { centerRa: 12, centerDec: 0, zoom: 1, panX: 0, panY: 0 };
   state.localView = false;
+  visualBackground.setPresentationMode('atlas');
   updateViewReadout();
 }
 
@@ -660,11 +753,23 @@ function populateLandmarkSelect() {
 
 function setVisibleCulture(id, fromId = state.visibleCultureId) {
   if (!state.cultures.has(id)) return;
+  // A culture switch returns to the all-sky view. Let the current pad leave
+  // with the same gentle tail as the visual layer; the next constellation
+  // entry will start the newly mapped pad.
+  stopAtmosphereLayers();
   state.transition = { from: fromId, to: id, started: performance.now(), duration: 1500 };
   state.visibleCultureId = id;
+  void civilizationSamples.prepareCulture(id);
   state.visibleStarIds = state.mode === 'compare'
     ? new Set([...culture(state.cultureId).stars, ...culture(state.compareId).stars])
     : new Set(culture(id).stars);
+  visualBackground.setCulture(id).catch((error) => {
+    console.error('Visual scene failed to load', error);
+    stage.dataset.visualSceneError = error.message;
+  });
+  // A culture change returns to the all-sky presentation. The next landmark
+  // selection will explicitly promote the scene to focus/playing brightness.
+  visualBackground.setPresentationMode('atlas');
   state.selected = null;
   state.activeStep = -1;
   audio.releaseAll(false);
@@ -737,6 +842,7 @@ function queueCompareSwitch() {
 
 function setCulture(id) {
   const previous = state.visibleCultureId;
+  stopAtmosphereLayers();
   state.cultureId = id;
   if (state.mode === 'compare' && state.compareId === id) {
     state.compareId = id === 'western' ? 'chinese' : 'western';
@@ -764,6 +870,7 @@ function setMode(mode) {
   const previous = state.visibleCultureId;
   const previousSelected = state.selected;
   state.mode = mode;
+  if (mode !== 'play') stopAtmosphereLayers();
   if (mode !== 'compare') {
     if (state.compareTimer) window.clearTimeout(state.compareTimer);
     state.compareTimer = null;
@@ -771,11 +878,17 @@ function setMode(mode) {
     state.compareLoops = 0;
   }
   $$('.mode').forEach((button) => button.classList.toggle('on', button.dataset.mode === mode));
+  $('#loop-entry').classList.toggle('on', mode === 'play' && state.performanceMode === 'loop');
   $('#arrangement-modes').hidden = mode !== 'play';
-  $('#performance-modes').hidden = mode !== 'play';
-  $('#scene-launcher').hidden = mode !== 'play';
+  $('#performance-modes').hidden = true;
+  $('#scene-launcher').hidden = true;
   $('#loop-panel').hidden = mode !== 'play' || state.performanceMode !== 'loop';
+  $('#loop-performance').hidden = mode !== 'play' || state.performanceMode !== 'loop';
   $('#compare-panel').hidden = mode !== 'compare';
+  if (mode !== 'play') {
+    document.body.classList.remove('performance-view');
+    state.performanceMode = 'star';
+  }
   if (mode === 'compare') {
     state.auto = false;
     state.autoLoops = 0;
@@ -803,6 +916,7 @@ function setMode(mode) {
 
 function showDetail(item) {
   state.selected = item;
+  visualBackground.setPresentationMode('focus');
   const current = culture();
   $('#detail-culture').textContent = `${current.regionLabel || current.regionGroup} · ${current.localizedName?.zh || current.nativeName}`;
   const zh = constellationZh(item);
@@ -811,12 +925,13 @@ function showDetail(item) {
     .filter((name, index, all) => name && name !== item.nativeName && all.indexOf(name) === index)
     .join(' / ');
   const mappedCount = Math.min(item.starCount, KEYBOARD_STEPS.length * 2);
-  $('#keyboard-note').textContent = `键盘 / KEYBOARD · QWERTY 字母键 · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
+  $('#keyboard-note').textContent = `Q — KICK · W — HI-HAT · E–P / A–L / Z–M · ${mappedCount} 颗星已映射 · PRESS 0.12s · HOLD >350ms · RELEASE 2.8s TAIL${item.starCount > KEYBOARD_STEPS.length ? ' · ⇧ 第二组' : ''}`;
   $('#detail-pronunciation').textContent = item.pronunciation || '—';
   $('#detail-stars').textContent = String(item.starCount);
   $('#detail-kind').textContent = item.kind === 'dark-region' ? '暗区 / DARK REGION' : '连线 / LINE';
   $('#detail-story-zh').textContent = chineseDetailStory(item, current);
-  setDetailCollapsed(state.detailCollapsed);
+  const responsiveDefault = mobileDetailQuery.matches && state.mode === 'play';
+  setDetailCollapsed(state.detailCollapsePreference ?? responsiveDefault);
   $('#detail').hidden = false;
   $('#landmark-select').value = item.id;
   $('#status').textContent = `音乐地标 / MUSICAL LANDMARK · ${constellationLabel(item)} · ${item.starCount} 颗星 / STEPS`;
@@ -844,6 +959,7 @@ async function enterLandmark(item = state.selected, startSound = true) {
   if (!item) return;
   if (state.mode !== 'play') setMode('play');
   state.selected = item;
+  visualBackground.setPresentationMode(startSound ? 'playing' : 'focus');
   fitConstellation(item);
   const sequence = sequenceFor(item);
   audio.setSequence(sequence, {
@@ -854,11 +970,16 @@ async function enterLandmark(item = state.selected, startSound = true) {
   state.visualEvents.push({ type: 'enter', point: constellationPoint(item), time: performance.now() });
   $('#status').textContent = `ENTER · ${item.nativeName.toUpperCase()} · INSIDE LOCAL MICRO SEQUENCER`;
   if (startSound && !audio.running) await audio.start();
+  void civilizationSamples.prepareCulture(state.visibleCultureId);
+  // Starting the pad after the gesture/context is available keeps browser
+  // autoplay policies satisfied while leaving star voices untouched.
+  startAtmosphereLayers(state.visibleCultureId);
 }
 
 function exitLandmark() {
   if (!state.localView) return;
   const item = state.selected;
+  stopAtmosphereLayers();
   resetView();
   state.visualEvents.push({ type: 'exit', point: item ? constellationPoint(item) : null, time: performance.now() });
   $('#status').textContent = `EXIT · ${item?.nativeName?.toUpperCase() || 'LANDMARK'} · CORRIDOR → NEXT NODE`;
@@ -950,11 +1071,11 @@ function drawStars() {
       : clamp(2.05 - (star.mag + 1) * 0.13, 0.9, 1.55);
     if (selected || star.mag < 3.2) {
       const glow = selected ? 5.4 : 3.3 + (3.2 - star.mag) * 0.75;
-      const glowAlpha = selected ? 0.2 : cultural ? 0.11 : 0.055;
-      ctx.fillStyle = `rgba(220,220,220,${glowAlpha})`;
+      const glowAlpha = selected ? 0.24 : cultural ? 0.16 : 0.07;
+      ctx.fillStyle = `rgba(236,236,236,${glowAlpha})`;
       ctx.beginPath(); ctx.arc(point.x, point.y, glow, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.fillStyle = active ? '#ffffff' : selected ? '#eeeeee' : cultural ? '#a0a0a0' : '#626262';
+    ctx.fillStyle = active ? '#ffffff' : selected ? '#f8f8f8' : cultural ? '#c2c2c2' : '#777777';
     ctx.fillRect(point.x - radius / 2, point.y - radius / 2, radius, radius);
     const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.id);
     const binding = selected && state.localView
@@ -1206,7 +1327,20 @@ function drawGestureVisuals() {
 
 function draw(now) {
   frame += 1;
-  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.23)' : '#020202';
+  const musicState = audio.visualMusicState();
+  visualBackground.setAudioData({
+    amplitude: musicState.overallEnergy,
+    energy: musicState.overallEnergy,
+    bass: musicState.kickEnvelope,
+    mid: Math.max(musicState.synthEnvelope, musicState.leadEnvelope),
+    high: musicState.percEnvelope,
+    beat: musicState.barPhase,
+    drone: musicState.padEnvelope,
+  });
+  ctx.clearRect(0, 0, width, height);
+  // The real visual scene owns the background. Keep only a very light veil for
+  // foreground tail cleanup so the star map never blacks out the WebGL scene.
+  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.07)' : 'rgba(2,2,2,.035)';
   ctx.fillRect(0, 0, width, height);
   if (state.transition) {
     const progress = clamp((now - state.transition.started) / state.transition.duration, 0, 1);
@@ -1253,9 +1387,9 @@ function hitConstellation(x, y) {
   return best;
 }
 
-function hitSequenceStar(x, y) {
+function hitSequenceStar(x, y, radius = 14) {
   if (!state.selected) return null;
-  let best = null; let distance = 14;
+  let best = null; let distance = radius;
   for (let i = 0; i < audio.sequence.length; i += 1) {
     if (state.performanceMode === 'arrange' && !state.controlNodes.some((node) => node.step.id === audio.sequence[i].id)) continue;
     const point = starPoint(audio.sequence[i]);
@@ -1266,40 +1400,93 @@ function hitSequenceStar(x, y) {
 }
 
 stage.addEventListener('pointerdown', (event) => {
-  stage.setPointerCapture(event.pointerId);
-  const star = state.mode === 'play' && state.localView ? hitSequenceStar(event.clientX, event.clientY) : null;
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activeTouchPointers.size >= 2) {
+      if (state.pointer?.playing) releaseInteractiveStep(state.pointer.gestureId);
+      const [first, second] = [...activeTouchPointers.values()];
+      const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+      pinchGesture = {
+        distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+        zoom: state.view.zoom, panX: state.view.panX, panY: state.view.panY, midpoint,
+      };
+      state.pointer = null;
+      return;
+    }
+  }
+  try { stage.setPointerCapture(event.pointerId); } catch { /* capture is optional on older mobile browsers */ }
+  const hitRadius = event.pointerType === 'touch' ? 28 : 14;
+  const star = state.mode === 'play' && state.localView ? hitSequenceStar(event.clientX, event.clientY, hitRadius) : null;
+  const loop = audio.loopSnapshot();
+  const loopRecording = Boolean(star) && state.performanceMode === 'loop' && loop.active && loop.status === 'recording';
   state.pointer = {
     id: event.pointerId, x: event.clientX, y: event.clientY,
     startX: event.clientX, startY: event.clientY, moved: false,
-    playing: Boolean(star) && state.performanceMode === 'star', arrangeControl: Boolean(star) && state.performanceMode === 'arrange', lastStar: null, gestureId: `pointer:${event.pointerId}`,
+    playing: Boolean(star) && state.performanceMode === 'star',
+    loopRecording,
+    arrangeControl: Boolean(star) && state.performanceMode === 'arrange', lastStar: null, gestureId: `pointer:${event.pointerId}`,
   };
   if (star) {
     state.pointer.lastStar = star.step.id;
     state.activeStep = star.index;
-    if (state.performanceMode === 'arrange') {
+    if (loopRecording) {
+      const recorded = audio.recordLoopInput(star.index);
+      if (recorded) {
+        $('#status').textContent = `LOOP ${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id} · STEP ${recorded.step + 1}`;
+        showPerformanceHit('●', `${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id}`, 'star');
+      }
+    } else if (state.performanceMode === 'arrange') {
       const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.step.id);
       triggerControlNode(controlIndex);
-    } else {
+    } else if (state.performanceMode === 'star') {
       pressInteractiveStep(star.step, star.index, state.pointer.gestureId);
       $('#status').textContent = `INSIDE · STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+    } else if (state.performanceMode === 'loop') {
+      $('#status').textContent = loop.status === 'count-in'
+        ? 'LOOP · 等待倒计时结束 / WAIT FOR COUNT-IN'
+        : 'LOOP · 选择 REDO 继续录层，或 EXIT 返回恒星演奏';
     }
   }
 });
 
 stage.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'touch' && activeTouchPointers.has(event.pointerId)) {
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinchGesture && activeTouchPointers.size >= 2) {
+      event.preventDefault();
+      const [first, second] = [...activeTouchPointers.values()];
+      const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+      const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+      const nextZoom = clamp(pinchGesture.zoom * (distance / pinchGesture.distance), 0.65, 12);
+      const ratio = nextZoom / pinchGesture.zoom;
+      state.view.zoom = nextZoom;
+      state.view.panX = midpoint.x - width / 2 - (pinchGesture.midpoint.x - width / 2 - pinchGesture.panX) * ratio;
+      state.view.panY = midpoint.y - height / 2 - (pinchGesture.midpoint.y - height / 2 - pinchGesture.panY) * ratio;
+      state.localView = state.view.zoom > 1.05;
+      updateViewReadout();
+      return;
+    }
+  }
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
   const dx = event.clientX - pointer.x; const dy = event.clientY - pointer.y;
   if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > 4) pointer.moved = true;
-  if (pointer.playing) {
-    const star = hitSequenceStar(event.clientX, event.clientY);
+  if (pointer.playing || pointer.loopRecording) {
+    const star = hitSequenceStar(event.clientX, event.clientY, event.pointerType === 'touch' ? 28 : 14);
     if (star && star.step.id !== pointer.lastStar) {
-      releaseInteractiveStep(pointer.gestureId);
+      if (pointer.playing) releaseInteractiveStep(pointer.gestureId);
       pointer.lastStar = star.step.id;
       state.activeStep = star.index;
-      pressInteractiveStep(star.step, star.index, pointer.gestureId);
+      if (pointer.loopRecording) {
+        const recorded = audio.recordLoopInput(star.index);
+        const loop = audio.loopSnapshot();
+        if (recorded) showPerformanceHit('●', `${loop.stage?.label || 'LAYER'} · STAR ${recorded.starId || star.step.id}`, 'star');
+      } else pressInteractiveStep(star.step, star.index, pointer.gestureId);
       state.trail.push({ x: star.point.x, y: star.point.y, time: performance.now() });
-      $('#status').textContent = `INSIDE · PATH STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
+      $('#status').textContent = pointer.loopRecording
+        ? `LOOP INPUT · ${audio.loopSnapshot().stage?.label || 'LAYER'} · HIP ${star.step.id}`
+        : `INSIDE · PATH STEP ${star.index + 1}/${audio.sequence.length} · HIP ${star.step.id}`;
     }
   } else {
     state.view.panX += dx;
@@ -1310,9 +1497,17 @@ stage.addEventListener('pointermove', (event) => {
 });
 
 stage.addEventListener('pointerup', (event) => {
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchGesture) {
+      if (activeTouchPointers.size < 2) pinchGesture = null;
+      state.pointer = null;
+      return;
+    }
+  }
   const pointer = state.pointer;
   if (!pointer || pointer.id !== event.pointerId) return;
-  if (!pointer.moved && !pointer.playing && !pointer.arrangeControl) {
+  if (!pointer.moved && !pointer.playing && !pointer.loopRecording && !pointer.arrangeControl) {
     const item = hitConstellation(event.clientX, event.clientY);
     if (item) {
       if (state.mode === 'play' && state.selected && !state.localView) {
@@ -1337,8 +1532,10 @@ stage.addEventListener('pointerup', (event) => {
   state.pointer = null;
 });
 
-stage.addEventListener('pointercancel', () => {
-  if (state.pointer?.gestureId) releaseInteractiveStep(state.pointer.gestureId);
+stage.addEventListener('pointercancel', (event) => {
+  activeTouchPointers.delete(event.pointerId);
+  if (activeTouchPointers.size < 2) pinchGesture = null;
+  if (state.pointer?.id === event.pointerId && state.pointer.gestureId) releaseInteractiveStep(state.pointer.gestureId);
   state.pointer = null;
 });
 stage.addEventListener('dblclick', (event) => {
@@ -1390,7 +1587,7 @@ function toggleFullscreen() {
 
 function showOverlay(type) {
   const body = $('#overlay-body');
-  $('#overlay-title').textContent = type === 'about' ? '关于 / ABOUT' : '署名与来源 / CREDITS / SOURCES';
+  $('#overlay-title').textContent = type === 'about' ? '关于 / ABOUT' : '项目与来源 / PROJECT / SOURCES';
   if (type === 'about') {
     body.innerHTML = `
       <h1>ONE SKY,<br>MANY WORLDS</h1>
@@ -1399,8 +1596,8 @@ function showOverlay(type) {
       <p>每个星座或星官都是一个音乐地标：恒星成为音序步骤，星等影响力度，角距离影响时间间隔。Every constellation or asterism is a musical landmark. Stars become steps, apparent magnitude affects velocity, and angular distance affects interval length.</p>
       <h2>非连线结构 / NON-LINE STRUCTURES</h2>
       <p>数据模型保留暗区、地平线门、月宿路径、宫墙、地景对应和时间周期。The data model preserves dark regions, horizon gates, lunar paths, enclosures, landscape correspondences and time cycles.</p>
-      <h2>原作 / ORIGINAL WORK</h2>
-      <p><strong>Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.<br>Original code used and modified under the MIT License.</strong></p>`;
+      <h2>作品 / PROJECT</h2>
+      <p><strong>Stellar Synth 是围绕跨文化星图、实时声音生成与可演奏交互持续独立开发的音画作品。<br>Stellar Synth is an independently developed audiovisual work connecting cross-cultural star maps, real-time synthesis and playable interaction.</strong></p>`;
   } else {
     const entries = state.data.cultures.map((item) => `
       <div class="credit-entry">
@@ -1408,10 +1605,10 @@ function showOverlay(type) {
         <span>${escapeHtml(item.authors || 'Authors listed in upstream description.md')}<br><br>LICENSE: ${escapeHtml(item.license || 'See upstream description.md')}<br>SOURCE: ${escapeHtml(item.sourceFiles.join(' · '))}<br>ILLUSTRATIONS: NOT BUNDLED</span>
       </div>`).join('');
     body.innerHTML = `
-      <h1>CREDITS /<br>SOURCES</h1>
-      <p><strong>Based on D5 v13 — Sequencer Map by Ewan Qian / 钱誉文.<br>Original code used and modified under the MIT License.</strong></p>
+      <h1>PROJECT /<br>SOURCES</h1>
+      <p><strong>Stellar Synth｜星宿频率<br>一件跨文化、生成式、可演奏的音画作品。</strong></p>
       <h2>AUDIO</h2>
-      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>, derived from the D5 v12 runtime and v13 patch. It uses Web Audio oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, synth arpeggios, pads, bass, gain envelopes, stereo panning, delay, reverb and dynamics compression. No WAV, MP3, sample pack or third-party recording is bundled.</p>
+      <p>Audio is generated in real time by <code>public/atlas/audio-engine.js</code>, with optional owner-provided MP3 atmosphere and instrument layers routed through the same Web Audio buses. It uses oscillators, procedurally generated percussion/glitch buffers, filtered noise, synth arpeggios, pads, bass, gain envelopes, stereo panning, delay, reverb and dynamics compression. Missing recordings always fall back to synthesis.</p>
       <h2>ASTRONOMICAL POSITIONS</h2>
       <p>Hipparcos identifiers come from Stellarium sky-culture geometry. J2000-aligned star positions and apparent magnitudes are adapted from the Astronexus HYG Database v4.1 under CC BY-SA 4.0.</p>
       <h2>SKY CULTURES</h2>
@@ -1449,6 +1646,12 @@ audio.addEventListener('star-event', (event) => {
   if (index >= 0) state.activeStep = index;
   state.starEventVisuals.push(detail);
   particleField.queue(detail, 'star');
+  (detail.event?.starIds || []).forEach((id) => {
+    const star = state.stars.get(id);
+    if (!star) return;
+    const point = starPoint(star);
+    visualBackground.triggerStar({ ...star, screen: { x: point.x, y: point.y, width, height } });
+  });
   $('#arrangement-modes').dataset.profile = detail.profileId;
   $('#arrangement-modes').dataset.eventMode = detail.mode;
   $('#arrangement-modes').dataset.eventSize = String(detail.event.starIds?.length || 0);
@@ -1456,6 +1659,33 @@ audio.addEventListener('star-event', (event) => {
 });
 
 audio.addEventListener('track-event', (event) => particleField.queue(event.detail, 'track'));
+
+audio.addEventListener('track-event', (event) => {
+  const detail = event.detail || {};
+  const eventType = detail.type || detail.trackId;
+  if (eventType === 'kick' || eventType === 'drums' || eventType === 'kick-hit') visualBackground.triggerEvent({ type: 'kick', intensity: detail.intensity ?? detail.amount ?? 0.55 });
+  else if (eventType === 'hat' || eventType === 'closed-hat' || eventType === 'open-hat') visualBackground.triggerEvent({ type: 'hat', intensity: detail.intensity ?? detail.amount ?? 0.4 });
+});
+
+audio.addEventListener('gesture', (event) => {
+  const detail = event.detail || {};
+  const star = detail.step || detail.star || (detail.id ? state.stars.get(detail.id) : null);
+  if (star) visualBackground.triggerStar(star);
+  if (detail.phase === 'press') visualBackground.triggerEvent({ type: 'star', intensity: 0.52 });
+});
+
+audio.addEventListener('state', (event) => {
+  if (event.detail?.running && state.mode === 'play') {
+    startAtmosphereLayers(state.visibleCultureId);
+  } else if (!event.detail?.running) {
+    stopAtmosphereLayers({ immediate: Boolean(event.detail?.panic) });
+  }
+  if (event.detail?.panic) {
+    // Panic clears audio and foreground gesture state; keep the mounted visual
+    // scene alive so the next PLAY action does not need a full page reload.
+    visualBackground.setAudioData({ amplitude: 0, bass: 0, mid: 0, high: 0, energy: 0, beat: 0, drone: 0 });
+  }
+});
 
 audio.addEventListener('arrangement-state', (event) => {
   const detail = event.detail;
@@ -1481,36 +1711,96 @@ audio.addEventListener('loop-state', (event) => {
   const loop = event.detail;
   const redoButton = $('#loop-redo');
   const clearButton = $('#loop-clear');
+  const performancePanel = $('#loop-performance');
+  const countNumber = $('#loop-count-number');
+  const currentLayer = $('#loop-current-layer');
+  const currentRole = $('#loop-current-role');
+  const nextLayer = $('#loop-next-layer');
+  const redoLayer = $('#loop-redo-layer');
+  const redoControls = $('#loop-redo-controls');
+  const startButton = $('#loop-start');
+  const currentBeatCells = $$('#loop-current-beats i');
+  const nextBeatCells = $$('#loop-next-beats i');
+  performancePanel.hidden = state.performanceMode !== 'loop' || state.mode !== 'play';
+  performancePanel.dataset.status = loop.status;
+  performancePanel.dataset.completedLayers = loop.completed?.join(',') || '';
+  performancePanel.dataset.playbackCounts = JSON.stringify(loop.playbackCounts || {});
+  const beat = Math.max(1, loop.status === 'full' ? loop.loopBeat || 1 : loop.beatNumber || 1);
+  $('#loop-count-in').hidden = loop.status !== 'count-in';
+  if (countNumber) {
+    countNumber.textContent = loop.status === 'count-in'
+      ? loop.countInBeat ? String(loop.countInBeat) : 'READY'
+      : '—';
+    countNumber.dataset.ready = String(loop.status === 'count-in' && !loop.countInBeat);
+  }
+  if (loop.status === 'count-in' && loop.countInBeat && loop.countInBeat !== state.lastCountInBeat) {
+    state.lastCountInBeat = loop.countInBeat;
+    countNumber?.animate([
+      { opacity: 0.18, transform: 'scale(.72)' },
+      { opacity: 1, transform: 'scale(1)' },
+    ], { duration: 360, easing: 'ease-out' });
+  } else if (loop.status !== 'count-in') state.lastCountInBeat = 0;
+  if (currentLayer) currentLayer.textContent = loop.currentStage || (loop.status === 'full' ? 'FULL LOOP' : '—');
+  if (currentRole) currentRole.textContent = loop.instrument || (loop.status === 'full' ? 'ALL LAYERS / 全部演奏层' : '—');
+  if (nextLayer) nextLayer.textContent = loop.nextStage || '—';
+  currentBeatCells.forEach((cell, index) => {
+    cell.classList.toggle('active', index === ((beat - 1) % 16));
+    cell.classList.toggle('accent', index === 0);
+    cell.classList.toggle('bar-accent', index > 0 && index % 4 === 0);
+  });
+  nextBeatCells.forEach((cell, index) => {
+    cell.classList.toggle('accent', index === 0);
+    cell.classList.toggle('bar-accent', index > 0 && index % 4 === 0);
+  });
   if (!loop.active && loop.status === 'idle') {
     $('#loop-stage').textContent = '引导循环 / GUIDED LOOP';
-    $('#loop-progress').textContent = 'COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE';
+    $('#loop-progress').textContent = 'COUNT-IN 8 BEATS → DRUM → BASS → ARP → HARMONY → MELODY → TEXTURE';
     $('#loop-keys').textContent = '字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE';
-    $('#loop-start').textContent = '开始录制 START LOOP';
+    startButton.hidden = false;
+    startButton.textContent = '开始录制 START LOOP';
+    redoControls.hidden = true;
     redoButton.disabled = true;
     clearButton.disabled = true;
     return;
   }
-  const completed = loop.completed.length ? loop.completed.join(' + ').toUpperCase() : 'EMPTY';
+  const completed = loop.completedLabels?.length ? loop.completedLabels.join(' + ') : 'EMPTY';
+  startButton.hidden = loop.active;
+  redoControls.hidden = !loop.completed.length || loop.status === 'count-in';
+  if (redoLayer) {
+    [...redoLayer.options].forEach((option) => { option.disabled = !loop.completed.includes(option.value) && option.value !== loop.stage?.id; });
+    if (redoLayer.selectedOptions[0]?.disabled) redoLayer.value = loop.completed.at(-1) || loop.stage?.id || 'drums';
+  }
   if (!loop.active && loop.status === 'stopped') {
     $('#loop-stage').textContent = `LOOP STOPPED · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
-    $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO REBUILD`;
-    $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / STOP MUTED AUDIO AND PRESERVED LAYER DATA';
+    $('#loop-progress').textContent = `PRESERVED: ${completed} · START LOOP TO RESUME`;
+    $('#loop-keys').textContent = 'STOP 已静音并保留层数据 / START 可从同一 16 拍起点恢复';
+    startButton.hidden = false;
+    startButton.textContent = '恢复循环 RESUME LOOP';
   } else if (loop.status === 'count-in') {
-    $('#loop-stage').textContent = 'COUNT-IN · 1 BAR';
-    $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'}`;
+    $('#loop-stage').textContent = loop.countInBeat
+      ? `COUNT-IN · 8 BEATS · ${loop.countInBeat}/8`
+      : 'COUNT-IN · READY';
+    $('#loop-progress').textContent = `准备录制 ${loop.stage?.label || 'LAYER'} / PREPARE ${loop.stage?.label || 'LAYER'} · NEXT ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage?.keyHint || 'LISTEN TO THE COUNT-IN';
   } else if (loop.status === 'recording') {
-    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel}`;
-    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed}`;
+    $('#loop-stage').textContent = `${loop.stage.label} · ${loop.stage.bars} BARS · ${loop.stage.gridLabel} · BEAT ${loop.beatNumber || 1}/16`;
+    $('#loop-progress').textContent = `${Math.round(loop.progress * 100)}% · ${loop.currentLayerEvents} EVENTS · ACTIVE: ${completed} · NEXT: ${loop.nextStage || '—'}`;
     $('#loop-keys').textContent = loop.stage.keyHint;
   } else if (loop.status === 'full') {
     $('#loop-stage').textContent = `FULL LOOP · ${loop.activeLayerCount} ACTIVE · ${loop.restLayerCount} REST`;
     $('#loop-progress').textContent = `PLAYING: ${completed} · EMPTY STAGES BECOME REST`;
-    $('#loop-keys').textContent = 'REDO 只重录最后一层；其余层继续循环 / REDO LAST LAYER IN PLACE';
+    $('#loop-keys').textContent = '选择任意层 REDO；其余层继续循环 / REDO ONE LAYER IN PLACE';
     $('#status').textContent = `FULL LOOP · ${loop.activeLayerCount} 个演奏层 · ${loop.restLayerCount} 个留白层`;
   }
   redoButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
   clearButton.disabled = !loop.active || (loop.status !== 'recording' && !loop.visited?.length);
+});
+
+audio.addEventListener('loop-playback', (event) => {
+  const performancePanel = $('#loop-performance');
+  if (!performancePanel) return;
+  performancePanel.dataset.playingLayers = event.detail.layerIds.join(',');
+  performancePanel.dataset.playbackCounts = JSON.stringify(event.detail.playbackCounts);
 });
 
 audio.addEventListener('track-change', (event) => {
@@ -1530,11 +1820,18 @@ audio.addEventListener('gesture', (event) => {
 });
 
 $('#play').addEventListener('click', async () => {
+  if (state.mode !== 'play') {
+    setPerformanceMode('star');
+    setMode('play');
+  }
   if (!audio.sequence.length) {
     const first = state.selected || culture().constellations.find((item) => item.starCount >= 3);
     if (first) { showDetail(first); setAudioLandmark(first); }
   }
   const running = await audio.toggle();
+  if (running) {
+    startAtmosphereLayers(state.visibleCultureId);
+  }
   if (running && state.mode === 'compare') {
     state.compareLoops = 0;
     state.compareStartedAt = performance.now();
@@ -1566,6 +1863,8 @@ $('#panic').addEventListener('click', () => {
   state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
+  stopAtmosphereLayers({ immediate: true });
+  setPerformanceMode('star');
   particleField.clear();
   state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
 });
@@ -1578,12 +1877,13 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 $$('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
+$('#loop-entry').addEventListener('click', startGuidedLoop);
 $$('.arrangement-mode').forEach((button) => button.addEventListener('click', () => setArrangementMode(button.dataset.arrangement)));
 $$('.performance-mode').forEach((button) => button.addEventListener('click', () => setPerformanceMode(button.dataset.performance)));
 $$('.scene-button').forEach((button) => button.addEventListener('click', () => launchScene(Number(button.dataset.scene))));
 $('#loop-start').addEventListener('click', startGuidedLoop);
 $('#loop-redo').addEventListener('click', () => {
-  const snapshot = audio.redoCurrentLoopLayer();
+  const snapshot = audio.redoCurrentLoopLayer($('#loop-redo-layer').value);
   $('#status').textContent = snapshot
     ? `LOOP · COUNT-IN → REDO ${snapshot.stage?.label || 'LAYER'}`
     : 'LOOP · 暂无可重录层 / NO LAYER TO REDO';
@@ -1594,11 +1894,26 @@ $('#loop-clear').addEventListener('click', () => {
     ? `LOOP · ${cleared.toUpperCase()} CLEARED → REST`
     : 'LOOP · 暂无可清除层 / NO LAYER TO CLEAR';
 });
+$('#loop-stop').addEventListener('click', () => {
+  audio.stop();
+  $('#status').textContent = 'LOOP STOPPED · 层已保留 / LAYERS PRESERVED';
+});
+$('#loop-panic').addEventListener('click', () => $('#panic').click());
+$('#loop-exit').addEventListener('click', () => {
+  if (audio.loopSnapshot().active) audio.stop();
+  setPerformanceMode('star');
+  $('#status').textContent = '返回恒星演奏 / RETURN TO STAR PLAY';
+});
 $('#culture-menu').addEventListener('click', () => openDrawer('primary'));
 $('#compare-culture').addEventListener('click', () => openDrawer('compare'));
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#detail-close').addEventListener('click', () => { $('#detail').hidden = true; });
-$('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed));
+$('#detail-collapse').addEventListener('click', () => setDetailCollapsed(!state.detailCollapsed, true));
+mobileDetailQuery.addEventListener('change', (event) => {
+  if (state.mode === 'play' && state.selected && state.detailCollapsePreference == null) {
+    setDetailCollapsed(event.matches);
+  }
+});
 $('#enter-landmark').addEventListener('click', () => focusLandmark(state.selected));
 $('#play-landmark').addEventListener('click', async () => {
   if (state.selected) setAudioLandmark(state.selected);
@@ -1641,7 +1956,7 @@ $('#back-cultures').addEventListener('click', returnToCultureSelection);
 $$('[data-overlay]').forEach((button) => button.addEventListener('click', () => showOverlay(button.dataset.overlay)));
 $('#overlay-close').addEventListener('click', () => { $('#overlay').hidden = true; });
 
-document.addEventListener('keydown', (event) => {
+document.addEventListener('keydown', async (event) => {
   const editable = event.target.matches?.('input, textarea, select, [contenteditable="true"]');
   if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && $('#launch').hidden && $('#overlay').hidden && $('#drawer').hidden) {
     if (state.mode === 'play' && /^Digit[0-9]$/.test(event.code)) {
@@ -1650,25 +1965,44 @@ document.addEventListener('keydown', (event) => {
       return;
     }
     if (state.performanceMode === 'loop' && state.mode === 'play' && state.localView) {
-      const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
-      if (base >= 0) {
-        event.preventDefault();
-        const keyIndex = base + (event.shiftKey ? KEYBOARD_STEPS.length : 0);
-        const recorded = audio.recordLoopInput(keyIndex);
-        if (recorded) $('#status').textContent = `LOOP INPUT · ${keyboardBinding(keyIndex).label} · STAR ${recorded.starId || '—'} · STEP ${recorded.step + 1}`;
-        return;
+      const loopKeyIndex = loopKeyboardStepIndex(event);
+      if (loopKeyIndex >= 0) {
+        const loop = audio.loopSnapshot();
+        if (loop.active && loop.status === 'recording') {
+          event.preventDefault();
+          const drumRole = loop.stage?.id === 'drums'
+            ? loopKeyIndex === 0 ? 'kick' : loopKeyIndex === 1 ? 'hat' : null
+            : null;
+          const recorded = audio.recordLoopInput(loopKeyIndex, drumRole ? { role: drumRole } : {});
+          if (recorded) {
+            const label = loopKeyboardBinding(loopKeyIndex).label;
+            $('#status').textContent = `LOOP ${loop.stage?.label || 'LAYER'} · ${label} · ${recorded.starId || 'VOICE'} · STEP ${recorded.step + 1}`;
+            showPerformanceHit(label, `${loop.stage?.label || 'LAYER'} · CURRENT INSTRUMENT · STEP ${recorded.step + 1}`, loop.stage?.id || 'star');
+          }
+          return;
+        }
       }
     }
-    const index = keyboardStepIndex(event);
-    if (index >= 0) {
+    if (state.mode === 'play' && state.performanceMode !== 'loop' && audio.sequence.length && (event.code === 'KeyQ' || event.code === 'KeyW')) {
       event.preventDefault();
+      const role = event.code === 'KeyQ' ? 'kick' : 'hat';
+      if (role === 'kick') await audio.performanceKick(); else await audio.performanceHat();
+      $('#status').textContent = role === 'kick' ? 'Q — KICK' : 'W — HI-HAT';
+      showPerformanceHit(role === 'kick' ? 'Q' : 'W', role === 'kick' ? 'KICK · 1 BEAT GRID' : 'HI-HAT · 1/2 BEAT GRID', role);
+      return;
+    }
+    const requestedIndex = keyboardStepIndex(event);
+    if (requestedIndex >= 0 && audio.sequence.length) {
+      event.preventDefault();
+      const index = requestedIndex % audio.sequence.length;
       const step = audio.sequence[index];
-      state.keyboardHeld.add(index);
+      const binding = keyboardBinding(requestedIndex);
+      state.keyboardHeld.add(event.code);
       state.activeStep = index;
       const gestureId = `key:${event.code}:${event.shiftKey ? 1 : 0}`;
       state.keyboardGestureIds.set(event.code, gestureId);
-      pressInteractiveStep(step, index, gestureId);
-      $('#status').textContent = `键盘演奏 / KEYBOARD · ${keyboardBinding(index).label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
+      pressInteractiveStep(step, index, gestureId, binding.label);
+      $('#status').textContent = `键盘演奏 / KEYBOARD · ${binding.label} · STEP ${index + 1}/${audio.sequence.length} · HIP ${step.id}`;
       return;
     }
   }
@@ -1688,13 +2022,13 @@ document.addEventListener('keydown', (event) => {
 
 document.addEventListener('keyup', (event) => {
   if (state.performanceMode === 'loop') return;
+  if (event.code === 'KeyQ' || event.code === 'KeyW') return;
   const base = KEYBOARD_STEPS.findIndex(([code]) => code === event.code);
   if (base < 0) return;
   const gestureId = state.keyboardGestureIds.get(event.code);
   if (gestureId) releaseInteractiveStep(gestureId);
   state.keyboardGestureIds.delete(event.code);
-  state.keyboardHeld.delete(base);
-  state.keyboardHeld.delete(base + KEYBOARD_STEPS.length);
+  state.keyboardHeld.delete(event.code);
   if (!audio.running && state.keyboardHeld.size === 0) state.activeStep = -1;
 });
 

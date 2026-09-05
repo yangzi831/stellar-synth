@@ -10,6 +10,7 @@
 <body>
   <main class="app" id="app" tabindex="0">
     <section class="stage" id="stage" aria-label="互动天空文化星图 / Interactive sky culture atlas">
+      <div id="visual-bg" aria-hidden="true"></div>
       <canvas id="sky"></canvas>
       <div class="grain" aria-hidden="true"></div>
     </section>
@@ -19,14 +20,14 @@
         <button class="brand-button text-button" id="home" aria-label="Return to culture selection">
           <span class="brand-return">← 返回文化选择 / CULTURES</span>
           <span>Stellar Synth / 星宿频率</span>
-          <small>Play the Stars Across Cultures · 150 BPM</small>
+          <small>Play the Stars Across Cultures · 123 BPM</small>
         </button>
       </header>
 
       <nav class="mode-nav" aria-label="模式 / Modes">
-        <button class="mode on" data-mode="atlas">星图 ATLAS</button>
-        <button class="mode" data-mode="play">演奏 PLAY</button>
-        <button class="mode" data-mode="compare">比较 COMPARE</button>
+        <button class="primary-mode" id="play">播放 PLAY</button>
+        <button class="primary-mode" id="loop-entry">循环 LOOP</button>
+        <button class="mode primary-mode" id="compare-entry" data-mode="compare">比较 COMPARE</button>
       </nav>
 
       <div class="culture-readout">
@@ -68,7 +69,7 @@
         <h1 id="detail-native"></h1>
         <div class="translated" id="detail-translated"></div>
         <div class="detail-body" id="detail-body">
-          <div class="keyboard-note" id="keyboard-note">1–0 · Q–P · A–L · Z–M · ⇧ SECOND BANK</div>
+          <div class="keyboard-note" id="keyboard-note">Q — KICK · W — HI-HAT · E–P · A–L · Z–M · ⇧ SECOND BANK</div>
           <dl>
             <div><dt>读音 / PRONUNCIATION</dt><dd id="detail-pronunciation">—</dd></div>
             <div><dt>恒星 / STEPS</dt><dd id="detail-stars">0</dd></div>
@@ -105,14 +106,16 @@
         DRAG = PAN · WHEEL / PINCH = ZOOM · CLICK = ENTER
       </div>
 
-      <div class="arrangement-modes" id="arrangement-modes" role="toolbar" aria-label="星图事件组织 / Star event arrangement" hidden>
-        <span>事件组织 / ARRANGE</span>
-        <button class="arrangement-mode on" data-arrangement="path">路径 PATH</button>
-        <button class="arrangement-mode" data-arrangement="group">群组 GROUP</button>
-        <button class="arrangement-mode" data-arrangement="fragment">碎片 FRAGMENT</button>
-      </div>
+      <details class="arrangement-modes" id="arrangement-modes" hidden>
+        <summary id="structure-summary">结构 STRUCTURE · PATH</summary>
+        <div role="toolbar" aria-label="星图事件组织 / Star event arrangement">
+          <button class="arrangement-mode on" data-arrangement="path">路径 PATH</button>
+          <button class="arrangement-mode" data-arrangement="group">群组 GROUP</button>
+          <button class="arrangement-mode" data-arrangement="fragment">碎片 FRAGMENT</button>
+        </div>
+      </details>
 
-      <div class="performance-modes" id="performance-modes" role="toolbar" aria-label="键盘语义 / Keyboard mode" hidden>
+      <div class="performance-modes legacy-control" id="performance-modes" role="toolbar" aria-label="键盘语义 / Keyboard mode" hidden>
         <span>参与 / PERFORM</span>
         <button class="performance-mode on" data-performance="star">恒星 STAR</button>
         <button class="performance-mode" data-performance="loop">循环 LOOP</button>
@@ -136,22 +139,58 @@
         <span id="loop-stage">引导循环 / GUIDED LOOP</span>
         <output id="loop-progress">COUNT-IN → DRUM → BASS → SYNTH → HARMONY → LEAD → TEXTURE</output>
         <button id="loop-start">开始录制 START LOOP</button>
-        <button id="loop-redo" disabled>重录本层 REDO</button>
-        <button id="loop-clear" disabled>清除当前层 CLEAR LAYER</button>
+        <div class="loop-redo-controls" id="loop-redo-controls" hidden>
+          <select id="loop-redo-layer" aria-label="选择重录层 / Select layer to redo">
+            <option value="drums">DRUM</option><option value="bass">BASS</option><option value="synth">ARP</option>
+            <option value="harmony">HARMONY</option><option value="lead">MELODY</option><option value="texture">TEXTURE</option>
+          </select>
+          <button id="loop-redo" disabled>重录 REDO</button>
+        </div>
+        <button id="loop-stop">停止 STOP</button>
+        <button id="loop-exit">退出循环 EXIT LOOP</button>
+        <details class="loop-more">
+          <summary>更多 MORE</summary>
+          <div>
+            <button id="loop-clear" disabled>清除当前层 CLEAR LAYER</button>
+            <button id="loop-panic" class="danger">清空全部 PANIC</button>
+          </div>
+        </details>
         <output id="loop-keys">字母键随当前阶段改变角色 / LETTER KEYS FOLLOW THE CURRENT STAGE</output>
       </div>
 
-      <div class="dock" role="toolbar" aria-label="演奏控制 / Playback controls">
-        <button id="play">播放 PLAY</button>
-        <button id="auto">自动路径 AUTO ROUTE</button>
-        <button id="guide" class="on">引导开启 GUIDE ON</button>
-        <button id="fullscreen">全屏 FULLSCREEN</button>
-        <button id="panic" class="danger">紧急停止 PANIC</button>
+      <div class="loop-performance" id="loop-performance" hidden aria-live="polite">
+        <div class="loop-count-in" id="loop-count-in"><small>COUNT IN / 倒计时</small><strong id="loop-count-number">—</strong></div>
+        <section class="loop-current"><small>CURRENT / 当前</small><strong id="loop-current-layer">—</strong><span id="loop-current-role">—</span>
+          <div class="loop-beats" id="loop-current-beats" aria-label="Current 16 beat indicator">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+        <section class="loop-next"><small>NEXT / 下一层</small><strong id="loop-next-layer">—</strong>
+          <div class="loop-beats preview" id="loop-next-beats" aria-label="Next 16 beat preview">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+        <div class="performance-keys"><b>全部字母键 = 当前音色</b><b>ALL LETTER KEYS = CURRENT INSTRUMENT</b><span>Q–P · A–L · Z–M</span></div>
       </div>
+
+      <div class="performance-hit" id="performance-hit" hidden aria-live="polite">
+        <strong id="performance-hit-key">E</strong>
+        <span id="performance-hit-role">STAR · HIP —</span>
+      </div>
+
+      <details class="dock" aria-label="次要工具 / Secondary tools">
+        <summary>工具 TOOLS</summary>
+        <div role="toolbar" aria-label="演奏控制 / Playback controls">
+          <button id="auto">自动路径 AUTO ROUTE</button>
+          <button id="guide" class="on">引导开启 GUIDE ON</button>
+          <button id="fullscreen">全屏 FULLSCREEN</button>
+          <button id="panic" class="danger">紧急停止 PANIC</button>
+        </div>
+      </details>
 
       <footer class="meta-nav">
         <button class="text-button" data-overlay="about">关于 ABOUT</button>
-        <button class="text-button" data-overlay="credits">署名与来源 CREDITS / SOURCES</button>
+        <button class="text-button" data-overlay="credits">项目与来源 PROJECT / SOURCES</button>
       </footer>
     </div>
 

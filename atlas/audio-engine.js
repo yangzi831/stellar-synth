@@ -3,21 +3,40 @@
  * patch by Ewan Qian / 钱誉文. Used and modified under the MIT License.
  * The signal path remains synthesis-only: oscillators, procedurally generated
  * sample buffers, filtered noise, stereo panning, gain envelopes and dynamics
- * compression. No third-party recording or sample pack is bundled.
+ * compression. Optional user-provided MP3 layers are routed by the dedicated
+ * atmosphere and civilization sample modules, never embedded in star logic.
  */
 
-export const BPM = 150;
+export const BPM = 123;
 const BEAT = 60 / BPM;
 const EIGHTH = BEAT / 2;
 const SIXTEENTH = BEAT / 4;
 const GROOVE_STEPS = 16;
+const ARRANGEMENT_PHASES = [
+  { id: 'birth', start: 0, end: 32, label: 'BIRTH', next: 'ORBIT' },
+  { id: 'orbit', start: 32, end: 128, label: 'ORBIT', next: 'CONSTELLATION' },
+  { id: 'constellation', start: 128, end: 256, label: 'CONSTELLATION', next: 'ECLIPSE' },
+  { id: 'eclipse', start: 256, end: 320, label: 'ECLIPSE / VARIATION', next: 'BIRTH' },
+];
 const LOOK_AHEAD = 0.13;
 const MAX_VOICES = 84;
 const MAX_INTERACTIONS = 8;
-const MASTER_GAIN = 1.32;
-const MAKEUP_GAIN = 1.22;
-const ARRANGEMENT_GAIN = 0.86;
-const MANUAL_GAIN = 1.62;
+// One global gain change preserves the finished drum/music/bed balance while
+// lifting every playback and performance path by a further 50% before dynamics.
+const MASTER_GAIN = 4.275;
+const MAKEUP_GAIN = 1.75;
+const ARRANGEMENT_GAIN = 1.08;
+const MUSIC_GAIN = 1.34;
+const DRUM_GAIN = 0.52;
+const MANUAL_GAIN = 1.95;
+const BED_GAIN = 0.105;
+const AUTOMATIC_KICK_GAIN = 0.7;
+// Civilizations with dedicated instrument/atmosphere samples keep the
+// automatic arrangement drum bed restrained. Other cultures get a stable,
+// deterministic 60–100% variation per constellation instead of a new random
+// level on every hit. Manual Q/W performance and recorded Loop layers do not
+// use this value.
+const SAMPLE_CULTURES = new Set(['chinese', 'navajo', 'western', 'tukano', 'inuit']);
 const HOLD_THRESHOLD_MS = 350;
 const TWO_BARS = BEAT * 8;
 const MODES = [
@@ -31,16 +50,61 @@ const TONICS = [38, 40, 41, 43, 45, 47];
 const METERS = [12, 14, 16, 20]; // 3/4, 7/8, 4/4, 5/4 in sixteenth steps.
 const PROGRESSIONS = [[0], [0, 5, 3], [0, 3, 5, 4], [0, 4, 5, 3], [0, 2, 6]];
 
+// Eight curated four-bar pockets. A constellation selects one deterministically,
+// then applies only a few bounded omissions/accents. Every automatic lane reads
+// this same template so the star map has one rhythmic centre rather than many.
+const GROOVE_TEMPLATES = [
+  { id: 'deep-offbeat', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,10,18,26,34,42,50,58], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,30,46,62], perc: [15,47], motifSlots: [1,7,13,25,33,39,45,57], constellationSlots: [3,11,27,35,51,59], restZones: [20,21,22,23] },
+  { id: 'late-bass', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [3,11,19,27,35,43,51,59], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [30,62], perc: [13,45], motifSlots: [1,9,15,25,33,41,47,57], constellationSlots: [5,21,29,37,53,61], restZones: [28,29,30,31] },
+  { id: 'broken-floor', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,7,18,23,34,39,50,55], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,46], perc: [31,63], motifSlots: [1,6,13,24,33,38,45,56], constellationSlots: [9,17,27,41,49,59], restZones: [12,13,14,15] },
+  { id: 'sparse-rave', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,10,19,26,34,42,51,58], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [30,62], perc: [23,55], motifSlots: [1,9,17,25,35,43,49,57], constellationSlots: [7,15,29,39,47,61], restZones: [44,45,46,47] },
+  { id: 'rolling-eighth', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,6,14,18,22,30,34,38,46,50,54,62], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,46], perc: [11,43], motifSlots: [1,9,17,27,33,41,49,59], constellationSlots: [5,13,25,37,45,57], restZones: [24,25,26,27] },
+  { id: 'syncopated-orbit', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [3,10,15,22,35,42,47,54], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,30,62], perc: [7,39], motifSlots: [1,11,17,25,33,43,49,57], constellationSlots: [5,13,21,37,45,53], restZones: [56,57,58,59] },
+  { id: 'wide-pocket', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,11,18,27,34,43,50,59], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [30,62], perc: [15,31,47], motifSlots: [1,7,17,23,33,39,49,55], constellationSlots: [9,25,41,57], restZones: [8,9,10,11] },
+  { id: 'hypnotic-answer', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,10,14,18,26,30,34,42,46,50,58,62], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,46], perc: [29,61], motifSlots: [1,9,17,25,35,41,49,57], constellationSlots: [7,15,23,39,47,55], restZones: [52,53,54,55] },
+];
+
+// Four curated drum spines share the same 16-step/bar transport but leave
+// different pockets for the constellation material. Selection is stable for
+// a constellation, so repetition remains hypnotic instead of changing every
+// bar. Q/W performance and Guided LOOP use their existing direct paths.
+const DRUM_GROOVE_FAMILIES = [
+  {
+    id: 'steady-offbeat',
+    kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60],
+    hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62],
+    open: [14,30,46,62], perc: [15,47],
+  },
+  {
+    id: 'broken-answer',
+    kick: [0,4,10,12,16,22,28,32,36,42,44,48,54,60],
+    hats: [2,6,14,18,22,30,34,38,46,50,54,62],
+    open: [14,46,62], perc: [7,27,39,59],
+  },
+  {
+    id: 'half-time-space',
+    kick: [0,8,12,16,24,28,32,40,44,48,56,60],
+    hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62],
+    open: [6,22,38,54], perc: [11,27,43,59],
+  },
+  {
+    id: 'rolling-hat',
+    kick: [0,4,12,16,20,26,28,32,36,44,48,52,58,60],
+    hats: [2,3,6,10,11,14,18,19,22,26,27,30,34,35,38,42,43,46,50,51,54,58,59,62],
+    open: [14,30,46,62], perc: [15,31,47,63],
+  },
+];
+
 export const SCENES = [
-  { number: 1, id: 'intro', label: 'INTRO', bars: 4, tracks: ['harmony', 'texture'], energy: 0.18 },
-  { number: 2, id: 'groove-a', label: 'GROOVE A', bars: 8, tracks: ['drums', 'bass', 'texture'], energy: 0.48 },
-  { number: 3, id: 'groove-b', label: 'GROOVE B', bars: 8, tracks: ['drums', 'bass', 'texture'], energy: 0.58 },
+  { number: 1, id: 'intro', label: 'INTRO', bars: 2, tracks: ['texture'], energy: 0.2 },
+  { number: 2, id: 'groove-a', label: 'GROOVE A', bars: 8, tracks: ['drums', 'bass', 'texture'], energy: 0.52 },
+  { number: 3, id: 'groove-b', label: 'GROOVE B', bars: 8, tracks: ['drums', 'bass', 'texture'], energy: 0.6 },
   { number: 4, id: 'bass-drive', label: 'BASS DRIVE', bars: 8, tracks: ['drums', 'bass', 'synth', 'texture'], energy: 0.7 },
-  { number: 5, id: 'synth-build', label: 'SYNTH BUILD', bars: 8, tracks: ['drums', 'bass', 'synth', 'texture'], energy: 0.78 },
-  { number: 6, id: 'melodic-open', label: 'MELODIC OPEN', bars: 8, tracks: ['drums', 'bass', 'synth', 'harmony', 'lead', 'texture'], energy: 0.76 },
-  { number: 7, id: 'break', label: 'BREAK', bars: 4, tracks: ['harmony', 'lead', 'texture'], energy: 0.28 },
-  { number: 8, id: 'peak-return', label: 'PEAK / RETURN', bars: 8, tracks: ['drums', 'bass', 'synth', 'harmony', 'lead', 'texture'], energy: 1 },
-  { number: 9, id: 'outro-experiment', label: 'OUTRO / EXPERIMENT', bars: 4, tracks: ['drums', 'synth', 'lead', 'texture'], energy: 0.46 },
+  { number: 5, id: 'synth-build', label: 'SYNTH BUILD', bars: 8, tracks: ['drums', 'bass', 'synth', 'texture'], energy: 0.76 },
+  { number: 6, id: 'melodic-open', label: 'MELODIC OPEN', bars: 8, tracks: ['drums', 'bass', 'harmony', 'texture'], energy: 0.72 },
+  { number: 7, id: 'break', label: 'BREAK', bars: 4, tracks: ['harmony', 'texture'], energy: 0.26 },
+  { number: 8, id: 'peak-return', label: 'PEAK / RETURN', bars: 8, tracks: ['drums', 'bass', 'synth', 'harmony', 'texture'], energy: 0.92 },
+  { number: 9, id: 'outro-experiment', label: 'OUTRO / EXPERIMENT', bars: 4, tracks: ['drums', 'texture'], energy: 0.42 },
 ];
 
 const SCENE_BY_NUMBER = new Map(SCENES.map((scene) => [scene.number, scene]));
@@ -48,6 +112,7 @@ const AUTO_SCENE_ORDERS = {
   chinese: [1, 2, 3, 4, 6, 5, 7, 8, 9],
   western: [1, 2, 4, 3, 5, 6, 7, 8, 9],
   indian: [1, 2, 3, 6, 4, 5, 7, 8, 9],
+  northern_andes: [1, 3, 2, 4, 6, 5, 7, 8, 9],
   fallback: [1, 2, 3, 4, 5, 6, 7, 8, 9],
 };
 
@@ -77,12 +142,12 @@ export const CULTURE_SAMPLE_MANIFEST = {
 };
 
 const LOOP_STAGES = [
-  { id: 'drums', label: 'DRUM', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q KICK · W CLOSED · E OPEN · R CLAP · T PERC · Y GLITCH' },
-  { id: 'bass', label: 'BASS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P STAR BASS · A–L +8VE · Z–M RESPONSE' },
-  { id: 'synth', label: 'SYNTH', bars: 2, grid: 1, gridLabel: '1/16', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
-  { id: 'harmony', label: 'HARMONY', bars: 4, grid: 4, gridLabel: '1/4', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
-  { id: 'lead', label: 'LEAD', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
-  { id: 'texture', label: 'TEXTURE', bars: 2, grid: 1, gridLabel: '1/16 / FREE', keyHint: 'Q WAVE · W GLITCH · E AIR · R GRAIN · REPEAT ACROSS KEYS' },
+  { id: 'drums', label: 'DRUM', instrument: 'DRUM KIT · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P / A–L / Z–M — DRUM KIT' },
+  { id: 'bass', label: 'BASS', instrument: 'BASS · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P BASS · A–L +8VE · Z–M LOW RESPONSE' },
+  { id: 'synth', label: 'ARP', instrument: 'ARP · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P PLUCK · A–L HIGH SEQUENCE · Z–M LOW PULSE' },
+  { id: 'harmony', label: 'HARMONY', instrument: 'HARMONY · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P OPEN VOICING · A–L +8VE · Z–M LOW VOICING' },
+  { id: 'lead', label: 'MELODY', instrument: 'MELODY · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P MOTIF · A–L HIGH MOTIF · Z–M RESPONSE' },
+  { id: 'texture', label: 'TEXTURE', instrument: 'TEXTURE · ALL KEYS', bars: 4, grid: 2, gridLabel: '1/8', keyHint: 'Q–P / A–L / Z–M — AIR / GRAIN / SHIMMER' },
 ];
 
 // Culture profiles describe musical organisation, never ethnic instrument skins.
@@ -184,9 +249,16 @@ export class SequencerAudio extends EventTarget {
     this.noiseBuffer = null;
     this.gestureBus = null;
     this.reverbSend = null;
+    this.reverbPreDelay = null;
+    this.reverbHighpass = null;
+    this.reverbLowpass = null;
     this.reverb = null;
     this.reverbReturn = null;
     this.arrangementBus = null;
+    this.musicBus = null;
+    this.musicRoomSend = null;
+    this.drumBus = null;
+    this.bedBus = null;
     this.delay = null;
     this.delayFeedback = null;
     this.delayReturn = null;
@@ -211,6 +283,12 @@ export class SequencerAudio extends EventTarget {
     this.formBar = 0;
     this.timelineOrigin = 0;
     this.patterns = { bass: [], synth: [], lead: [] };
+    this.constellationGroove = { id: 'none', starts: [], kick: [], hats: [], open: [], perc: [], bass: [], synth: [], motifSlots: [], constellationSlots: [], restZones: [], accents: [], signature: [] };
+    this.sectionPhase = 'signature';
+    this.arrangementPhase = 'birth';
+    this.motif = [];
+    this.motifSignature = '';
+    this.lastBedStep = -Infinity;
     this.loopSession = null;
     this.trackEnvelopes = Object.fromEntries(TRACK_IDS.map((id) => [id, { time: -99, amount: 0 }]));
     this.lastArrangementState = null;
@@ -253,24 +331,47 @@ export class SequencerAudio extends EventTarget {
     this.gestureBus.gain.value = MANUAL_GAIN;
     this.gestureBus.connect(this.master);
     this.reverbSend = ac.createGain();
-    this.reverbSend.gain.value = 0.26;
+    this.reverbSend.gain.value = 0.22;
+    this.reverbPreDelay = ac.createDelay(0.2);
+    this.reverbPreDelay.delayTime.value = 0.058;
+    this.reverbHighpass = ac.createBiquadFilter();
+    this.reverbHighpass.type = 'highpass';
+    this.reverbHighpass.frequency.value = 260;
+    this.reverbHighpass.Q.value = 0.6;
+    this.reverbLowpass = ac.createBiquadFilter();
+    this.reverbLowpass.type = 'lowpass';
+    this.reverbLowpass.frequency.value = 7200;
+    this.reverbLowpass.Q.value = 0.35;
     this.reverb = ac.createConvolver();
-    this.reverb.buffer = this.makeImpulse(2.8);
+    this.reverb.buffer = this.makeImpulse(3.6);
     this.reverbReturn = ac.createGain();
-    this.reverbReturn.gain.value = 0.38;
-    this.reverbSend.connect(this.reverb).connect(this.reverbReturn).connect(this.master);
+    this.reverbReturn.gain.value = 0.34;
+    this.reverbSend.connect(this.reverbPreDelay).connect(this.reverbHighpass).connect(this.reverbLowpass).connect(this.reverb).connect(this.reverbReturn).connect(this.master);
     this.arrangementBus = ac.createGain();
     this.arrangementBus.gain.value = ARRANGEMENT_GAIN;
     this.arrangementBus.connect(this.master);
-    this.arrangementBus.connect(this.reverbSend);
+    this.musicBus = ac.createGain();
+    this.musicBus.gain.value = MUSIC_GAIN;
+    this.musicBus.connect(this.arrangementBus);
+    this.musicRoomSend = ac.createGain();
+    this.musicRoomSend.gain.value = 0;
+    this.drumBus = ac.createGain();
+    this.drumBus.gain.value = DRUM_GAIN;
+    this.drumBus.connect(this.arrangementBus);
+    this.bedBus = ac.createGain();
+    this.bedBus.gain.value = BED_GAIN;
+    this.bedBus.connect(this.musicBus);
     this.delay = ac.createDelay(1.2);
     this.delay.delayTime.value = BEAT * 0.75;
     this.delayFeedback = ac.createGain();
     this.delayFeedback.gain.value = 0.36;
     this.delayReturn = ac.createGain();
-    this.delayReturn.gain.value = 0.29;
+    this.delayReturn.gain.value = 0.24;
     this.delay.connect(this.delayFeedback).connect(this.delay);
     this.delay.connect(this.delayReturn).connect(this.master);
+    const delaySpaceSend = ac.createGain();
+    delaySpaceSend.gain.value = 0.16;
+    this.delayReturn.connect(delaySpaceSend).connect(this.reverbSend);
   }
 
   makeNoise() {
@@ -334,6 +435,12 @@ export class SequencerAudio extends EventTarget {
     }));
     this.arrangementMode = composition.mode || 'path';
     this.profile = this.createProfile(this.sequence, identity);
+    this.constellationGroove = this.deriveConstellationGroove(this.events);
+    this.motif = this.createConstellationMotif(this.sequence, identity);
+    this.motifSignature = this.motif.map((entry) => `${entry.starId}:${entry.degree}:${entry.step}`).join('|');
+    this.sectionPhase = 'signature';
+    this.arrangementPhase = 'birth';
+    this.lastBedStep = -Infinity;
     this.patterns = this.createMusicalPatterns();
     this.createTrackLanes();
     this.currentSection = 'intro';
@@ -358,39 +465,141 @@ export class SequencerAudio extends EventTarget {
     const culture = this.profile.cultureId;
     const rotation = this.profile.seed % this.profile.mode.length;
     const rotate = (degrees) => degrees.map((degree) => (degree + rotation) % this.profile.mode.length);
-    const make = (positions, degrees, bars) => positions.map((position, index) => ({
-      step: position % (bars * GROOVE_STEPS),
-      degree: rotate(degrees)[index % degrees.length],
-      accent: index % 4 === 0 ? 1 : index % 4 === 3 ? 0.78 : 0.9,
+    const make = (positions, degrees, rotateDegrees = true) => positions.map((position, index) => ({
+      step: position % 64,
+      degree: (rotateDegrees ? rotate(degrees) : degrees)[index % degrees.length],
+      accent: this.constellationGroove.accents.includes(position % 64) ? 1 : index % 4 === 3 ? 0.78 : 0.9,
       star: this.sequence[index % Math.max(1, this.sequence.length)],
       index,
     }));
+    const bassSlots = this.constellationGroove.bass;
+    const counterSlots = this.constellationGroove.synth;
+    const responseSlots = this.constellationGroove.motifSlots.filter((_, index) => index % 3 === 2);
+    const fifthDegree = Math.max(1, this.profile.mode.indexOf(7));
     if (culture === 'chinese') return {
-      bass: make([0, 6, 8, 14, 16, 22, 24, 30], [0, 4, 0, 3, 0, 4, 2, 3], 2),
-      synth: make([0, 3, 6, 10, 12, 15, 18, 21, 24, 27, 29], [0, 1, 2, 4, 3, 2, 0, 4, 2, 1, 3], 2),
-      lead: make([4, 11, 20, 28, 36, 43, 52, 60], [2, 4, 3, 1, 0, 2, 4, 3], 4),
+      bass: make(bassSlots, [0, fifthDegree, 0, 0], false),
+      synth: make(counterSlots, [0, 1, 4, 2]),
+      lead: make(responseSlots, [2, 4, 3, 1]),
       synthRecipe: 'fm-metallic', acousticSlots: ['guzheng', 'dizi', 'metalPercussion'],
     };
     if (culture === 'western') return {
-      bass: make([0, 3, 6, 10, 12, 14, 16, 19, 22, 26, 28, 30], [0, 0, 2, 4, 0, 2, 4, 4, 2, 0, 4, 2], 2),
-      synth: make([0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30], [0, 2, 4, 2, 1, 3, 5, 3, 2, 4, 6, 4, 1, 3, 5, 2], 2),
-      lead: make([2, 8, 14, 18, 24, 30, 34, 40, 46, 54, 60], [4, 3, 2, 0, 2, 4, 5, 4, 2, 1, 0], 4),
+      bass: make(bassSlots, [0, 0, fifthDegree, 0], false),
+      synth: make(counterSlots, [0, 2, 4, 2]),
+      lead: make(responseSlots, [4, 3, 2, 0]),
       synthRecipe: 'saw-sequence', acousticSlots: ['harpsichord', 'harp', 'strings'],
     };
     if (culture === 'indian') return {
-      bass: make([0, 7, 8, 15, 16, 23, 24, 31], [0, 4, 0, 1, 0, 4, 2, 0], 2),
-      synth: make([0, 3, 5, 8, 11, 14, 16, 19, 21, 24, 27, 30], [0, 1, 4, 2, 1, 0, 0, 2, 4, 1, 2, 0], 2),
-      lead: make([3, 9, 15, 22, 29, 35, 41, 47, 55, 61], [0, 1, 4, 2, 1, 0, 4, 2, 1, 0], 4),
+      bass: make(bassSlots, [0, fifthDegree, 0, fifthDegree], false),
+      synth: make(counterSlots, [0, 1, 4, 1]),
+      lead: make(responseSlots, [0, 1, 4, 2]),
       synthRecipe: 'dark-pulse', acousticSlots: ['pluckedString', 'drone', 'percussion'],
+    };
+    if (culture === 'northern_andes') return {
+      bass: make(bassSlots, [0, fifthDegree, 0, 0], false),
+      synth: make(counterSlots, [0, 2, 4, 2]),
+      lead: make(responseSlots, [0, 2, 4, 2]),
+      synthRecipe: 'soft-poly', acousticSlots: ['stellar'],
     };
     const starDegrees = this.sequence.slice(0, 12).map((star, index) => this.degreeForStep(star, index));
     const degrees = starDegrees.length ? starDegrees : [0, 2, 4, 1];
     return {
-      bass: make([0, 6, 8, 14, 16, 22, 24, 30], degrees, 2),
-      synth: make([0, 3, 6, 8, 11, 14, 16, 19, 22, 24, 27, 30], degrees, 2),
-      lead: make([4, 12, 20, 28, 36, 44, 52, 60], degrees, 4),
+      bass: make(bassSlots, [0, fifthDegree, 0, fifthDegree], false),
+      synth: make(counterSlots, degrees),
+      lead: make(responseSlots, degrees),
       synthRecipe: ['analog-pluck', 'acid-resonant', 'soft-poly', 'dark-pulse'][this.profile.timbre], acousticSlots: ['stellar'],
     };
+  }
+
+  deriveConstellationGroove(events = []) {
+    const starts = [];
+    const accents = [];
+    let cursor = 0;
+    for (const event of events.slice(0, 64)) {
+      const position = Math.round(cursor * 4) % 64;
+      starts.push(position);
+      accents.push(clamp(Number(event.intensity || event.velocity || 0.6), 0.2, 1));
+      cursor += Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
+    }
+    if (!starts.length) starts.push(0, 6, 11, 14);
+    const unique = (values) => [...new Set(values.map((value) => ((value % 64) + 64) % 64))].sort((a, b) => a - b);
+    const structuralStarts = unique(starts);
+    const eventSignature = events.slice(0, 24).map((event) => `${event.id}:${event.starIds?.length || 1}`).join('|');
+    const templateIndex = hashText(`groove:${this.profile.seed}:${eventSignature}`) % GROOVE_TEMPLATES.length;
+    const template = GROOVE_TEMPLATES[templateIndex];
+    const drumFamilyIndex = hashText(`drum-family:${this.profile.cultureId}:${this.profile.seed}:${eventSignature}`) % DRUM_GROOVE_FAMILIES.length;
+    const drumFamily = DRUM_GROOVE_FAMILIES[drumFamilyIndex];
+    const seed = this.profile.seed + templateIndex * 4099;
+    const restZones = [...template.restZones];
+    const outsideRest = (position) => !restZones.includes(position);
+    const kick = drumFamily.kick.filter((position, index) => {
+      // Preserve the downbeat and allow at most one bounded omission across
+      // the four-bar family, keeping its identity intact.
+      const omission = 1 + ((seed >>> 5) % Math.max(1, drumFamily.kick.length - 1));
+      return outsideRest(position) && (position === 0 || index !== omission || unitNoise(seed + 17) > 0.72);
+    });
+    const hats = drumFamily.hats.filter((position, index) => outsideRest(position) && !(index % 8 === 7 && unitNoise(seed + 31) > 0.62));
+    const bass = template.bass.filter(outsideRest);
+    const open = drumFamily.open.filter(outsideRest);
+    const perc = drumFamily.perc.filter(outsideRest).slice(0, 3);
+    const motifSlots = template.motifSlots.filter(outsideRest);
+    const constellationSlots = template.constellationSlots.filter(outsideRest);
+    const synth = motifSlots.filter((_, index) => index % 3 === 1).map((position) => (position + 2) % 64).filter(outsideRest);
+    const brightAccents = structuralStarts.filter((position, index) => accents[index] >= 0.72).slice(0, 4);
+    const accentPoints = unique([0, 16, 32, 48, ...brightAccents]);
+    return {
+      id: template.id, drumFamily: drumFamily.id, drumFamilyIndex, primaryPulse: kick, starts: structuralStarts, kick, hats, open, perc, bass, synth,
+      motifSlots, constellationSlots, restZones, accents: accentPoints,
+      syncopationPoints: unique([...bass, ...constellationSlots].filter((position) => position % 4 !== 0)),
+      signature: structuralStarts.slice(0, 16),
+    };
+  }
+
+  arrangementPhaseForStep(stepNumber = 0) {
+    const cycle = 320;
+    const phaseStep = ((stepNumber % cycle) + cycle) % cycle;
+    return ARRANGEMENT_PHASES.find((phase) => phaseStep >= phase.start && phaseStep < phase.end) || ARRANGEMENT_PHASES[0];
+  }
+
+  createConstellationMotif(sequence = [], identity = {}) {
+    if (!sequence.length) return [];
+    const seed = hashText(`motif:${identity.cultureId || 'sky'}:${identity.landmarkId || 'landmark'}:${sequence.map((star) => star.id).join(',')}`);
+    const stride = 1 + (seed % Math.max(1, Math.min(4, sequence.length - 1)));
+    const entries = [];
+    const motifSlots = this.constellationGroove.motifSlots.length
+      ? this.constellationGroove.motifSlots
+      : [1, 9, 17, 25, 33, 41, 49, 57];
+    const length = Math.min(clamp(4 + Math.floor(Math.sqrt(sequence.length)), 4, 8), motifSlots.length);
+    const chineseContour = [0, 2, 4, 1, 3, 2, 0, 4];
+    const indianContour = [0, 1, 0, 2, 3, 2, 1, 0];
+    const westernContour = [0, 2, 4, 2, 1, 3, 5, 4];
+    const andesContour = [0, 2, 4, 2, 1, 3, 2, 0];
+    for (let index = 0; index < length; index += 1) {
+      const starIndex = (index * stride + (seed >>> 7) % sequence.length) % sequence.length;
+      const star = sequence[starIndex];
+      const baseDegree = this.degreeForStep(star, starIndex);
+      const contour = identity.cultureId === 'chinese' ? chineseContour
+        : identity.cultureId === 'indian' ? indianContour
+          : identity.cultureId === 'western' ? westernContour : null;
+      const cultureContour = identity.cultureId === 'northern_andes' ? andesContour : contour;
+      const structureBias = star?.mag != null && star.mag < 2.2 && index % 3 === 0 ? 1 : 0;
+      const degree = cultureContour
+        ? (cultureContour[index % cultureContour.length] + structureBias) % this.profile.mode.length
+        : baseDegree;
+      entries.push({
+        id: `motif-${star.id}-${index}`,
+        starId: star.id,
+        star,
+        index,
+        step: motifSlots[index % motifSlots.length],
+        degree,
+        durationBeats: clamp((star.interval || 1) * 0.55, 0.38, 1.6),
+        accent: index === 0 || index % 4 === 0
+          ? 1
+          : clamp(0.68 + (star?.mag != null ? clamp(3.4 - star.mag, 0, 2.4) * 0.06 : 0) + unitNoise(seed + index * 23) * 0.12, 0.68, 0.96),
+        seed: seed + index * 101,
+      });
+    }
+    return entries;
   }
 
   degreeForStep(step, index = 0) {
@@ -476,8 +685,14 @@ export class SequencerAudio extends EventTarget {
     if (!this.arrangementBus || !this.context) return;
     const gain = this.arrangementBus.gain;
     gain.cancelScheduledValues(time);
-    gain.setTargetAtTime(0.56, time, 0.012);
+    gain.setTargetAtTime(0.68, time, 0.012);
     gain.setTargetAtTime(ARRANGEMENT_GAIN, time + 0.12, 0.14);
+    if (this.bedBus) {
+      const bedGain = this.bedBus.gain;
+      bedGain.cancelScheduledValues(time);
+      bedGain.setTargetAtTime(BED_GAIN * 0.32, time, 0.018);
+      bedGain.setTargetAtTime(BED_GAIN, time + 0.18, 0.32);
+    }
   }
 
   outputMetrics() {
@@ -491,27 +706,63 @@ export class SequencerAudio extends EventTarget {
     return { rms, peak, rmsDb: db(rms), peakDb: db(peak) };
   }
 
-  loopSnapshot() {
+  loopSnapshot(displayPosition = null) {
     if (!this.loopSession) return { active: false, status: 'idle', stage: null, completed: [] };
     const session = this.loopSession;
     const visibleStageIndex = session.status === 'count-in' ? session.pendingStageIndex : session.stageIndex;
     const stage = visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex] : null;
-    const current = Math.max(session.stageStartStep, this.currentTransportStep());
+    const livePosition = this.currentTransportPosition();
+    const rememberedPosition = Number.isFinite(session.displayPosition) ? session.displayPosition : -Infinity;
+    const transportPosition = Number.isFinite(displayPosition)
+      ? displayPosition
+      : Math.max(livePosition, rememberedPosition);
+    const current = session.status === 'count-in' ? transportPosition : Math.max(session.stageStartStep, transportPosition);
     const length = Math.max(1, session.stageEndStep - session.stageStartStep);
     const currentLayer = stage ? session.layers.get(stage.id) : null;
+    const relative = Math.max(0, current - session.stageStartStep);
+    const countInBeat = session.status === 'count-in'
+      ? current < session.stageStartStep ? 0 : clamp(Math.floor(relative / 4) + 1, 1, 8)
+      : 0;
+    const beatNumber = session.status === 'count-in'
+      ? countInBeat
+      : clamp(Math.floor(relative / 4) + 1, 1, 16);
+    const nextStage = session.redoOnly
+      ? { label: 'FULL LOOP' }
+      : visibleStageIndex >= 0 ? LOOP_STAGES[visibleStageIndex + 1] || null : LOOP_STAGES[0];
     return {
       active: session.active, status: session.status, stage,
       stageIndex: visibleStageIndex, completed: [...session.completed],
+      completedLabels: session.completed.map((id) => LOOP_STAGES.find((entry) => entry.id === id)?.label || id.toUpperCase()),
+      playbackCounts: { ...session.playbackCounts },
       resting: [...session.resting], visited: [...session.visited],
       activeLayerCount: session.completed.length, restLayerCount: session.resting.length,
       currentLayerEvents: currentLayer?.events.length || 0,
       progress: clamp((current - session.stageStartStep) / length, 0, 1),
+      countInBeat, beatNumber, beatTotal: session.status === 'count-in' ? 8 : 16,
+      sixteenthStep: Math.max(0, relative),
+      loopBeat: session.loopOriginStep == null ? 1 : Math.floor((((current - session.loopOriginStep) % 64) + 64) % 64 / 4) + 1,
+      currentStage: stage?.label || null,
+      nextStage: nextStage?.label || null,
+      instrument: stage?.instrument || null,
+      barsRemaining: stage ? Math.max(0, stage.bars - relative / GROOVE_STEPS) : 0,
       layers: Object.fromEntries([...session.layers].map(([id, layer]) => [id, layer.events.length])),
     };
   }
 
-  dispatchLoopState() {
-    this.dispatchEvent(new CustomEvent('loop-state', { detail: this.loopSnapshot() }));
+  dispatchLoopState(displayPosition = null, audioTime = null) {
+    const session = this.loopSession;
+    const revision = session?.uiRevision ?? 0;
+    const emit = () => {
+      if (session && this.loopSession !== session) return;
+      if (session && session.uiRevision !== revision) return;
+      if (session && Number.isFinite(displayPosition)) {
+        session.displayPosition = Math.max(session.displayPosition ?? -Infinity, displayPosition);
+      }
+      this.dispatchEvent(new CustomEvent('loop-state', { detail: this.loopSnapshot(displayPosition) }));
+    };
+    if (this.context && Number.isFinite(audioTime)) {
+      window.setTimeout(emit, Math.max(0, (audioTime - this.context.currentTime) * 1000));
+    } else emit();
   }
 
   currentTransportStep() {
@@ -519,14 +770,41 @@ export class SequencerAudio extends EventTarget {
     return Math.max(0, Math.floor((this.context.currentTime - this.timelineOrigin) / SIXTEENTH));
   }
 
+  currentTransportPosition() {
+    if (!this.context || !this.timelineOrigin) return this.arrangementStep;
+    return Math.max(0, (this.context.currentTime - this.timelineOrigin) / SIXTEENTH);
+  }
+
   async startGuidedLoop() {
-    await this.start();
-    const nextBar = Math.ceil((this.arrangementStep + 1) / GROOVE_STEPS) * GROOVE_STEPS;
+    // Entering LOOP from an already-playing constellation must keep the shared
+    // transport alive. start() is a toggle, so only call it when stopped.
+    if (!this.running) await this.start();
+    if (this.loopSession?.status === 'stopped' && this.loopSession.completed.length) {
+      const session = this.loopSession;
+      session.uiRevision += 1;
+      const nextBar = Math.ceil((this.arrangementStep + 1) / GROOVE_STEPS) * GROOVE_STEPS;
+      session.active = true;
+      session.status = 'full';
+      session.stageIndex = LOOP_STAGES.length;
+      session.pendingStageIndex = -1;
+      session.loopOriginStep = nextBar;
+      session.stageStartStep = nextBar;
+      session.stageEndStep = nextBar + 64;
+      session.layers.forEach((layer) => { layer.anchorStep = nextBar; });
+      this.sceneAuto = false;
+      this.dispatchLoopState();
+      return this.loopSnapshot();
+    }
+    const nextBar = Math.ceil((this.arrangementStep + 1) / 4) * 4;
     this.loopSession = {
       active: true, status: 'count-in', stageIndex: -1,
       pendingStageIndex: 0, redoOnly: false,
-      stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS,
+      uiRevision: 0,
+      stageStartStep: nextBar, stageEndStep: nextBar + GROOVE_STEPS * 2,
+      displayPosition: this.currentTransportPosition(),
+      loopOriginStep: null,
       completed: [], resting: [], visited: [],
+      playbackCounts: Object.fromEntries(LOOP_STAGES.map((stage) => [stage.id, 0])),
       layers: new Map(LOOP_STAGES.map((stage) => [stage.id, { ...stage, anchorStep: 0, events: [] }])),
     };
     this.sceneAuto = false;
@@ -536,6 +814,7 @@ export class SequencerAudio extends EventTarget {
 
   stopGuidedLoop(clear = false) {
     if (!this.loopSession) return;
+    this.loopSession.uiRevision += 1;
     this.loopSession.active = false;
     this.loopSession.status = clear ? 'idle' : 'stopped';
     if (clear) this.loopSession = null;
@@ -545,6 +824,7 @@ export class SequencerAudio extends EventTarget {
   clearCurrentLoopLayer() {
     const session = this.loopSession;
     if (!session) return null;
+    session.uiRevision += 1;
     const fallback = session.visited.at(-1) || session.completed.at(-1);
     const id = LOOP_STAGES[session.stageIndex]?.id || fallback;
     const layer = session.layers.get(id);
@@ -555,40 +835,55 @@ export class SequencerAudio extends EventTarget {
     return id || null;
   }
 
-  redoCurrentLoopLayer() {
+  redoCurrentLoopLayer(requestedId = null) {
     const session = this.loopSession;
     if (!session?.active || !this.context) return null;
     const fallback = session.visited.at(-1) || session.completed.at(-1);
-    const targetId = session.status === 'recording' ? LOOP_STAGES[session.stageIndex]?.id : fallback;
+    const targetId = requestedId && session.layers.has(requestedId)
+      ? requestedId
+      : session.status === 'recording' ? LOOP_STAGES[session.stageIndex]?.id : fallback;
     const targetIndex = LOOP_STAGES.findIndex((stage) => stage.id === targetId);
     if (targetIndex < 0) return null;
+    session.uiRevision += 1;
     const layer = session.layers.get(targetId);
     layer.events = [];
+    session.playbackCounts[targetId] = 0;
     session.completed = session.completed.filter((entry) => entry !== targetId);
     session.resting = session.resting.filter((entry) => entry !== targetId);
     session.status = 'count-in';
     session.stageIndex = -1;
     session.pendingStageIndex = targetIndex;
     session.redoOnly = true;
-    const nextBar = Math.ceil((this.currentTransportStep() + 1) / GROOVE_STEPS) * GROOVE_STEPS;
-    session.stageStartStep = nextBar;
-    session.stageEndStep = nextBar + GROOVE_STEPS;
+    const current = this.currentTransportPosition();
+    const countInStart = Math.ceil((current + 1) / 4) * 4;
+    const recordStart = countInStart + GROOVE_STEPS * 2;
+    session.pendingOriginStep = recordStart;
+    session.stageStartStep = countInStart;
+    session.stageEndStep = recordStart;
+    session.displayPosition = this.currentTransportPosition();
     this.dispatchLoopState();
     return this.loopSnapshot();
   }
 
-  recordLoopInput(keyIndex) {
+  recordLoopInput(keyIndex, options = {}) {
     const session = this.loopSession;
     if (!session?.active || session.status !== 'recording' || session.stageIndex < 0 || !this.context) return null;
     const stage = LOOP_STAGES[session.stageIndex];
-    const transportStep = this.currentTransportStep();
-    const relative = clamp(transportStep - session.stageStartStep, 0, stage.bars * GROOVE_STEPS - 1);
-    const quantizedStep = clamp(Math.round(relative / stage.grid) * stage.grid, 0, stage.bars * GROOVE_STEPS - 1);
-    const event = { step: quantizedStep, keyIndex, starId: this.sequence[keyIndex % Math.max(1, this.sequence.length)]?.id || null };
+    const transportStep = this.currentTransportPosition();
+    if (transportStep < session.stageStartStep || transportStep >= session.stageEndStep) return null;
+    const loopLength = stage.bars * GROOVE_STEPS;
+    const origin = session.loopOriginStep ?? session.stageStartStep;
+    const relative = ((transportStep - origin) % loopLength + loopLength) % loopLength;
+    const roleGrid = options.role === 'kick' ? 4 : options.role === 'hat' ? 2 : stage.grid;
+    const quantizedStep = (Math.round(relative / roleGrid) * roleGrid) % loopLength;
+    const event = {
+      step: quantizedStep, keyIndex, role: options.role || null,
+      starId: this.sequence[keyIndex % Math.max(1, this.sequence.length)]?.id || null,
+    };
     const layer = session.layers.get(stage.id);
     const duplicate = layer.events.findIndex((entry) => entry.step === event.step && entry.keyIndex === event.keyIndex);
     if (duplicate >= 0) layer.events[duplicate] = event; else layer.events.push(event);
-    this.playLoopEvent(stage.id, event, this.context.currentTime + 0.006, true);
+    if (options.audition !== false) this.playLoopEvent(stage.id, event, this.context.currentTime + 0.006, true);
     this.dispatchEvent(new CustomEvent('loop-record', { detail: { stage, event, quantizedStep } }));
     this.dispatchLoopState();
     return event;
@@ -606,6 +901,7 @@ export class SequencerAudio extends EventTarget {
     this.dispatchEvent(new CustomEvent('track-event', { detail: {
       trackId, type, audioTime: time, intensity: amount, starIds,
       section: this.currentSection, cultureId: this.profile.cultureId,
+      arrangementPhase: this.arrangementPhase, motifSignature: this.motifSignature,
     } }));
   }
 
@@ -628,6 +924,8 @@ export class SequencerAudio extends EventTarget {
       leadEnvelope: envelopes.lead, currentSection: this.currentSection,
       currentScene: scene.number, currentSceneLabel: scene.label, sceneAuto: this.sceneAuto,
       currentCulture: this.profile.cultureId, currentArrangementMode: this.arrangementMode,
+      arrangementPhase: this.arrangementPhase,
+      motifSignature: this.motifSignature,
       particleMotion: (this.profile.grammar.arrangement || FALLBACK_CULTURE_PROFILE.arrangement).particleMotion,
       activeTracks, manualOverrides: [...this.trackLanes.values()].filter((lane) => lane.manualOverride).map((lane) => lane.id),
       tracks: this.trackSnapshot(),
@@ -657,6 +955,8 @@ export class SequencerAudio extends EventTarget {
     this.nextArrangementTick = this.nextTick;
     this.timelineOrigin = this.nextArrangementTick;
     this.arrangementStep = 0;
+    this.arrangementPhase = 'birth';
+    this.lastBedStep = -Infinity;
     this.timer = window.setInterval(() => this.schedule(), 18);
     this.dispatchEvent(new CustomEvent('state', { detail: { running: true } }));
   }
@@ -698,24 +998,6 @@ export class SequencerAudio extends EventTarget {
       this.scheduleArrangement(this.arrangementStep, this.nextArrangementTick);
       this.arrangementStep += 1;
       this.nextArrangementTick += BEAT / 4;
-    }
-    while (this.nextTick < this.context.currentTime + LOOK_AHEAD) {
-      if (this.events.length) {
-        const eventIndex = this.eventTick % this.events.length;
-        const event = this.events[eventIndex];
-        const starLayerActive = !this.loopSession?.active && [1, 7, 9].includes(this.currentScene);
-        if (starLayerActive) this.triggerStarEvent(event, eventIndex, this.nextTick);
-        const eventBeats = Math.max(0.25, Number(event.durationBeats || 0.5) + Number(event.restBeats || 0));
-        this.nextTick += BEAT * eventBeats;
-        const firstStar = event.stars?.[0];
-        const stepIndex = firstStar ? this.sequence.findIndex((step) => step.id === firstStar.id) : -1;
-        this.dispatchEvent(new CustomEvent('step', { detail: {
-          index: stepIndex, tick: this.tick, eventIndex, loopStart: eventIndex === 0,
-          mode: this.arrangementMode, event,
-        } }));
-        this.eventTick += 1;
-      } else this.nextTick += EIGHTH;
-      this.tick += 1;
     }
   }
 
@@ -860,24 +1142,94 @@ export class SequencerAudio extends EventTarget {
 
   connectGesture(node) {
     node.connect(this.gestureBus);
-    node.connect(this.reverbSend);
+    if (this.reverbSend) {
+      const send = this.context.createGain();
+      send.gain.value = 0.18;
+      node.connect(send).connect(this.reverbSend);
+    }
+  }
+
+  connectBed(node, reverbAmount = 0.18) {
+    if (!this.bedBus) return;
+    node.connect(this.bedBus);
+    if (reverbAmount > 0 && this.reverbSend) {
+      const send = this.context.createGain();
+      send.gain.value = reverbAmount;
+      node.connect(send).connect(this.reverbSend);
+    }
+  }
+
+  prioritizeManualVoices(reserve = 4) {
+    if (this.voices < MAX_VOICES - reserve) return;
+    const required = Math.max(reserve + 2, this.voices - (MAX_VOICES - reserve) + 1);
+    const sources = [...this.active].slice(0, required);
+    sources.forEach((source) => {
+      try { source.stop(this.context.currentTime + 0.002); } catch { /* source already ended */ }
+    });
+  }
+
+  async performanceKick() {
+    await this.ensure();
+    this.prioritizeManualVoices(3);
+    const time = this.context.currentTime + 0.004;
+    this.duckForManual(time);
+    this.technoKick(time, 0.034, this.drumPalette().kick, 'gesture');
+    this.markTrack('drums', time, 0.96, 'kick', [this.sequence[0]?.id].filter(Boolean));
+    return time;
+  }
+
+  async performanceHat() {
+    await this.ensure();
+    this.prioritizeManualVoices(2);
+    const time = this.context.currentTime + 0.004;
+    this.duckForManual(time);
+    this.sampleHat(time, Math.max(0.014, this.drumPalette().hatGain * 1.18), 0, 'gesture');
+    this.markTrack('drums', time, 0.58, 'closed-hat', [this.sequence[1]?.id || this.sequence[0]?.id].filter(Boolean));
+    return time;
   }
 
   starInstrumentAttack(step, index, time) {
+    this.prioritizeManualVoices(4);
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
-    const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.25, 0.9);
+    const velocity = clamp(1.12 - (magnitude + 1.3) / 8.5, 0.58, 1);
     const note = this.noteForStep(step, index, 12);
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
+    // User-provided civilization samples share the same star trigger path as
+    // the procedural voice. If a buffer is not ready, the synth voice below
+    // remains the immediate fallback and no star can become silent.
+    this.samplePlayer?.playForStar(this.profile.cultureId, index, time, { gain: 0.72, pan });
     const instrument = Math.abs((Number(step.id) || index) + index * 3 + this.profile.seed) % 5;
-    if (instrument === 0) this.gestureInstrumentTone(note, time, 0.82, 0.036 * velocity, pan, 'bell');
-    else if (instrument === 1) this.gestureInstrumentTone(note, time, 0.48, 0.044 * velocity, pan, 'keys');
-    else if (instrument === 2) this.gestureInstrumentTone(note, time, 0.38, 0.035 * velocity, pan, 'synth');
-    else if (instrument === 3) this.gestureInstrumentTone(note - 12, time, 0.55, 0.05 * velocity, pan, 'bass');
-    else this.gestureMallet(note, time, 0.04 * velocity, pan, index + this.profile.seed);
+    if (this.voices >= MAX_VOICES - 3) return this.emergencyStarAttack(note, time, 0.11 * velocity, pan);
+    let sounded = false;
+    if (instrument === 0) sounded = this.gestureInstrumentTone(note, time, 0.82, 0.105 * velocity, pan, 'bell');
+    else if (instrument === 1) sounded = this.gestureInstrumentTone(note, time, 0.48, 0.118 * velocity, pan, 'keys');
+    else if (instrument === 2) sounded = this.gestureInstrumentTone(note, time, 0.38, 0.108 * velocity, pan, 'synth');
+    else if (instrument === 3) sounded = this.gestureInstrumentTone(note - 12, time, 0.55, 0.122 * velocity, pan, 'bass');
+    else sounded = this.gestureMallet(note, time, 0.112 * velocity, pan, index + this.profile.seed);
+    if (!sounded) this.emergencyStarAttack(note, time, 0.11 * velocity, pan);
+    return true;
+  }
+
+  emergencyStarAttack(note, time, gain, pan) {
+    if (!this.context) return false;
+    this.prioritizeManualVoices(1);
+    const oscillator = this.context.createOscillator();
+    const envelope = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+    oscillator.type = 'triangle';
+    oscillator.frequency.value = midi(note);
+    envelope.gain.setValueAtTime(Math.max(0.018, gain), time);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.22);
+    panner.pan.value = pan;
+    oscillator.connect(envelope).connect(panner);
+    this.connectGesture(panner);
+    this.register(oscillator);
+    oscillator.start(time); oscillator.stop(time + 0.24);
+    return true;
   }
 
   gestureInstrumentTone(note, time, duration, gain, pan, instrument) {
-    if (this.voices >= MAX_VOICES - 3) return;
+    if (this.voices >= MAX_VOICES - 3) return false;
     const voices = {
       bell: [['sine', 1, 0.72], ['sine', 2.01, 0.25], ['sine', 3.93, 0.09]],
       keys: [['triangle', 1, 0.68], ['sine', 2, 0.22]],
@@ -907,10 +1259,11 @@ export class SequencerAudio extends EventTarget {
     });
     filter.connect(envelope).connect(panner);
     this.connectGesture(panner);
+    return true;
   }
 
   gestureMallet(note, time, gain, pan, seed) {
-    if (this.voices >= MAX_VOICES - 1) return;
+    if (this.voices >= MAX_VOICES - 1) return false;
     const oscillator = this.context.createOscillator();
     const resonator = this.context.createBiquadFilter();
     const envelope = this.context.createGain();
@@ -925,6 +1278,7 @@ export class SequencerAudio extends EventTarget {
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.34);
     this.gestureNoise(time, 0.045, gain * 0.22, midi(note) * 2.4, 11, pan, seed);
+    return true;
   }
 
   gesturePulse(session, time) {
@@ -998,7 +1352,7 @@ export class SequencerAudio extends EventTarget {
     this.gestureNoise(time, 0.58, 0.0045, 1100, 3.5, panner.pan.value, session.seed + 999);
   }
 
-  triggerStep(step, index, time, emphatic) {
+  triggerStep(step, index, time, emphatic, includeKick = true) {
     if (!step || !this.context || !this.master) return;
     const magnitude = Number.isFinite(step.mag) ? step.mag : 4;
     const velocity = clamp(1.05 - (magnitude + 1.3) / 8.5, 0.18, 0.92);
@@ -1010,9 +1364,13 @@ export class SequencerAudio extends EventTarget {
     const pan = clamp((step.pan ?? 0) * 0.8, -0.85, 0.85);
     const gain = (emphatic ? 0.052 : 0.034) * velocity;
     const role = index % 8;
+    this.samplePlayer?.playForStar(this.profile.cultureId, index, time, {
+      gain: emphatic ? 1 : 0.84,
+      pan,
+    });
 
     if (role === 0) {
-      this.kick(time, 0.035 + velocity * 0.035);
+      if (includeKick) this.kick(time, 0.035 + velocity * 0.035);
       this.tone(base - 12, time, duration * 1.8, gain * 0.75, 'sine', 1000, pan);
     } else if (role === 1 || role === 5) {
       this.tone(base + 12, time, Math.max(0.045, duration * 0.55), gain, 'triangle', 4200 + velocity * 1800, pan);
@@ -1078,7 +1436,7 @@ export class SequencerAudio extends EventTarget {
       if (this.arrangementMode === 'path') {
         const step = event.stars[0];
         const index = Math.max(0, this.sequence.findIndex((candidate) => candidate.id === step.id));
-        this.triggerStep(step, index, when, false);
+        this.triggerStep(step, index, when, false, false);
       } else {
         const notes = this.selectEventVoices(event);
         const fragment = this.arrangementMode === 'fragment';
@@ -1094,6 +1452,12 @@ export class SequencerAudio extends EventTarget {
                 : ['triangle', 'sine', 'square'][voiceIndex % 3];
           const cutoff = fragment ? 3900 + voiceIndex * 720 : 2100 + voiceIndex * 480;
           this.tone(note, when + voiceIndex * (fragment ? 0.008 : 0.014), duration, gain, type, cutoff, pan);
+          if (voiceIndex < 2) this.samplePlayer?.playForStar(
+            this.profile.cultureId,
+            this.sequence.findIndex((candidate) => candidate.id === star.id),
+            when + voiceIndex * (fragment ? 0.008 : 0.014),
+            { gain: fragment ? 0.42 : 0.28, pan },
+          );
         });
         if (fragment && event.musicalRole === 'accent') {
           const star = event.stars[event.stars.length - 1];
@@ -1109,6 +1473,10 @@ export class SequencerAudio extends EventTarget {
 
   scheduleArrangement(stepNumber, time) {
     if (!this.sequence.length || !this.arrangementBus) return;
+    const phase = this.arrangementPhaseForStep(stepNumber);
+    this.arrangementPhase = phase.id;
+    this.sectionPhase = phase.id === 'birth' ? 'signature'
+      : phase.id === 'constellation' ? 'full' : 'variation';
     const cycleStep = stepNumber % GROOVE_STEPS;
     const cycleIndex = Math.floor(stepNumber / GROOVE_STEPS);
     this.updateLoopSession(stepNumber, time);
@@ -1118,14 +1486,56 @@ export class SequencerAudio extends EventTarget {
     const sourceStep = this.sequence[stepNumber % this.sequence.length];
     const nextStep = this.sequence[(stepNumber * 3 + 1) % this.sequence.length] || sourceStep;
     if (!this.loopSession?.active) {
-      if (this.trackIsActive('drums')) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
-      if (this.trackIsActive('bass')) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
-      if (this.trackIsActive('synth')) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
-      if (this.trackIsActive('harmony')) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
-      if (this.trackIsActive('lead')) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      this.scheduleCosmicBed(stepNumber, time, sourceStep);
+      this.scheduleMotifLane(stepNumber, time);
+      const birth = phase.id === 'birth';
+      const eclipse = phase.id === 'eclipse';
+      if (!birth && !eclipse && this.trackIsActive('drums')) this.scheduleDrumLane(cycleStep, cycleIndex, time, sourceStep, nextStep);
+      if ((birth || eclipse) && this.trackIsActive('texture')) this.scheduleSubtlePulseLane(cycleStep, cycleIndex, time, nextStep);
+      if (!birth && !eclipse && this.trackIsActive('bass')) this.scheduleBassLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
+      if (!birth && !eclipse && this.trackIsActive('synth')) this.scheduleSynthLane(cycleStep, cycleIndex, chordDegree, time, nextStep);
+      if (!birth && !eclipse && this.trackIsActive('harmony')) this.scheduleHarmonyLane(cycleStep, cycleIndex, chordDegree, progressionIndex, time);
+      if (!birth && !eclipse && this.trackIsActive('lead')) this.scheduleLeadLane(cycleStep, cycleIndex, chordDegree, time, sourceStep);
       if (this.trackIsActive('texture')) this.scheduleTextureLane(cycleStep, cycleIndex, time, nextStep);
+      this.scheduleConstellationEventLane(stepNumber, time);
     }
     this.scheduleLoopPlayback(stepNumber, time);
+  }
+
+  scheduleConstellationEventLane(stepNumber, time) {
+    if (!this.events.length) return;
+    const grooveStep = stepNumber % 64;
+    const slots = this.constellationGroove.constellationSlots;
+    const slotIndex = slots.indexOf(grooveStep);
+    if (slotIndex < 0) return;
+    const phrase = Math.floor(stepNumber / 64);
+    const phase = this.arrangementPhase;
+    const allowed = phase === 'birth'
+      ? slotIndex < 2
+      : phase === 'constellation'
+        ? true
+        : phase === 'eclipse'
+          ? slotIndex === 0
+          : slotIndex % 2 === 0;
+    if (!allowed) return;
+    const eventIndex = (phrase * Math.max(1, slots.length) + slotIndex) % this.events.length;
+    const event = this.events[eventIndex];
+    this.triggerStarEvent(event, eventIndex, time);
+    const firstStar = event.stars?.[0];
+    const sequenceIndex = firstStar ? this.sequence.findIndex((step) => step.id === firstStar.id) : -1;
+    this.dispatchEvent(new CustomEvent('step', { detail: {
+      index: sequenceIndex, tick: this.tick, eventIndex,
+      loopStart: slotIndex === 0, mode: this.arrangementMode, event,
+    } }));
+    this.tick += 1;
+    this.eventTick += 1;
+  }
+
+  scheduleSubtlePulseLane(step, bar, time, star) {
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    if (grooveStep % 8 !== 2 || this.constellationGroove.restZones.includes(grooveStep)) return;
+    this.sampleHat(time, 0.0042 * this.drumPalette().arrangementGain, (star?.pan ?? 0) * 0.18);
+    this.markTrack('drums', time, 0.2, 'subtle-pulse', [star?.id].filter(Boolean));
   }
 
   updateArrangementDirector(stepNumber, time) {
@@ -1164,16 +1574,17 @@ export class SequencerAudio extends EventTarget {
     if (session.status === 'count-in') {
       if (stepNumber >= session.stageStartStep && stepNumber < session.stageEndStep && (stepNumber - session.stageStartStep) % 4 === 0) {
         const accent = stepNumber === session.stageStartStep;
-        this.samplePerc(time, accent ? 0.02 : 0.011, 0, accent ? 1900 : 2600);
+        this.samplePerc(time, accent ? 0.0065 : 0.0038, 0, accent ? 1650 : 2350);
         this.markTrack('drums', time, accent ? 0.9 : 0.52, 'count-in');
+        this.dispatchLoopState(stepNumber, time);
       }
-      if (stepNumber >= session.stageEndStep) this.beginLoopStage(session.pendingStageIndex ?? 0, session.stageEndStep);
+      if (stepNumber >= session.stageEndStep) this.beginLoopStage(session.pendingStageIndex ?? 0, session.stageEndStep, time);
       return;
     }
     if (session.status === 'recording' && stepNumber >= session.stageEndStep) {
       const stage = LOOP_STAGES[session.stageIndex];
       const layer = session.layers.get(stage.id);
-      layer.anchorStep = session.stageStartStep;
+      layer.anchorStep = session.loopOriginStep ?? session.stageStartStep;
       if (!session.visited.includes(stage.id)) session.visited.push(stage.id);
       if (layer.events.length) {
         if (!session.completed.includes(stage.id)) session.completed.push(stage.id);
@@ -1187,20 +1598,20 @@ export class SequencerAudio extends EventTarget {
         session.pendingStageIndex = -1;
         session.status = 'full';
         session.stageIndex = LOOP_STAGES.length;
-        this.dispatchLoopState();
+        this.dispatchLoopState(stepNumber, time);
         return;
       }
       const nextIndex = session.stageIndex + 1;
       if (nextIndex >= LOOP_STAGES.length) {
         session.status = 'full';
         session.stageIndex = LOOP_STAGES.length;
-        this.dispatchLoopState();
-      } else this.beginLoopStage(nextIndex, session.stageEndStep);
+        this.dispatchLoopState(stepNumber, time);
+      } else this.beginLoopStage(nextIndex, session.stageEndStep, time);
     }
-    if (stepNumber % 4 === 0) this.dispatchLoopState();
+    if (stepNumber % 4 === 0) this.dispatchLoopState(stepNumber, time);
   }
 
-  beginLoopStage(index, startStep) {
+  beginLoopStage(index, startStep, audioTime = null) {
     const session = this.loopSession;
     const stage = LOOP_STAGES[index];
     if (!session || !stage) return;
@@ -1209,10 +1620,15 @@ export class SequencerAudio extends EventTarget {
     session.pendingStageIndex = -1;
     session.stageStartStep = startStep;
     session.stageEndStep = startStep + stage.bars * GROOVE_STEPS;
+    if (session.pendingOriginStep != null) {
+      session.loopOriginStep = session.pendingOriginStep;
+      session.layers.forEach((entry) => { entry.anchorStep = session.pendingOriginStep; });
+      session.pendingOriginStep = null;
+    } else if (session.loopOriginStep == null) session.loopOriginStep = startStep;
     const layer = session.layers.get(stage.id);
-    layer.anchorStep = startStep;
+    layer.anchorStep = session.loopOriginStep;
     layer.events = [];
-    this.dispatchLoopState();
+    this.dispatchLoopState(startStep, audioTime);
   }
 
   trackIsActive(trackId) {
@@ -1222,108 +1638,170 @@ export class SequencerAudio extends EventTarget {
 
   laneVariant(trackId) { return this.trackLanes.get(trackId)?.current || 0; }
 
+  drumPalette() {
+    const culture = this.profile.cultureId;
+    const arrangementGain = SAMPLE_CULTURES.has(culture)
+      ? 0.6
+      : 0.6 + unitNoise(this.profile.seed + 731) * 0.4;
+    const family = this.constellationGroove?.drumFamilyIndex || 0;
+    const make = (kick, values) => ({ ...values, kick, arrangementKick: (kick + family) % 5, arrangementGain });
+    if (culture === 'chinese') return make(0, { hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0 });
+    if (culture === 'western') return make(1, { hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1 });
+    if (culture === 'indian') return make(2, { hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2 });
+    if (culture === 'northern_andes') return make(3, { hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3 });
+    const kick = this.laneVariant('drums');
+    return make(kick, { hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: kick });
+  }
+
+  motifNote(entry, octave = 12) {
+    if (!entry) return this.profile.tonic + octave;
+    const starIndex = Math.max(0, this.sequence.findIndex((star) => star.id === entry.starId));
+    const register = this.profile.grammar.register?.base || 0;
+    return scaleNote(this.profile.tonic + octave + register, entry.degree + (starIndex % 3 === 2 ? 1 : 0), this.profile.mode);
+  }
+
+  scheduleCosmicBed(stepNumber, time, sourceStep) {
+    const phase = this.arrangementPhase;
+    const interval = phase === 'birth' ? 32 : 64;
+    if (stepNumber !== 0 && stepNumber % interval !== 0) return;
+    if (this.lastBedStep === stepNumber) return;
+    this.lastBedStep = stepNumber;
+    const grammar = this.profile.grammar;
+    const motifEntries = this.motif.slice(0, 3);
+    const motifNotes = motifEntries.map((entry, index) => this.motifNote(entry, index === 0 ? 0 : 12));
+    let notes = motifNotes.length ? motifNotes : [this.profile.tonic];
+    if (grammar.voicing === 'tonic-orbit') notes = [this.profile.tonic + 12, this.profile.tonic + 19, ...notes.slice(0, 1)];
+    else if (grammar.voicing === 'open-pentatonic') notes = [notes[0], notes[0] + 7, notes[1] || notes[0] + 12];
+    else if (grammar.voicing === 'modal-vertical') notes = [notes[0], notes[0] + 5, notes[1] || notes[0] + 9];
+    else notes = [...notes, this.profile.tonic + 7];
+    const eclipse = phase === 'eclipse';
+    const duration = BEAT * (eclipse ? 18 : phase === 'birth' ? 18 : 20);
+    const gain = eclipse ? 0.0018 : phase === 'birth' ? 0.0026 : 0.0022;
+    const pan = clamp((sourceStep?.pan ?? 0) * (grammar.spatial || 0.6) * 0.45, -0.55, 0.55);
+    this.spaceAtmosphere(notes.slice(0, grammar.voicing === 'modal-vertical' ? 3 : 2), time, duration, gain, pan);
+    this.markTrack('harmony', time, eclipse ? 0.28 : 0.48, eclipse ? 'eclipse-bed' : 'cosmic-bed', motifEntries.map((entry) => entry.starId));
+  }
+
+  scheduleMotifLane(stepNumber, time) {
+    if (!this.motif.length) return;
+    const cycleStep = stepNumber % 64;
+    const entry = this.motif.find((candidate) => candidate.step === cycleStep);
+    if (!entry) return;
+    if (this.arrangementPhase === 'eclipse' && entry.index % 2 === 1) return;
+    const phrase = Math.floor(stepNumber / 64);
+    if (phrase % 4 === 3 && entry.index === this.motif.length - 1) return;
+    const octaveVariation = phrase > 0 && phrase % 4 === 2 && entry.index === 0 ? 12 : 0;
+    const note = this.motifNote(entry, (this.profile.cultureId === 'indian' ? 0 : 12) + octaveVariation);
+    const duration = BEAT * (this.arrangementPhase === 'birth' ? entry.durationBeats * 0.88 : entry.durationBeats);
+    const gain = 0.017 * entry.accent * (this.arrangementPhase === 'eclipse' ? 0.58 : 1);
+    const star = entry.star;
+    const pan = clamp((star?.pan ?? 0) * (this.profile.grammar.spatial || 0.6), -0.8, 0.8);
+    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, duration * 1.25, gain * 0.82, pan);
+    else this.melodicVoice(note, time, duration, gain, pan);
+    this.markTrack('lead', time, entry.accent, 'constellation-motif', [entry.starId]);
+  }
+
   scheduleDrumLane(step, bar, time, sourceStep, nextStep) {
     const scene = this.currentScene;
     const culture = this.profile.cultureId;
-    const kickVariant = culture === 'western' ? 1 : culture === 'indian' ? 2 : culture === 'chinese' ? 0 : this.laneVariant('drums');
-    const kicks = scene === 9 ? [0, 8] : [0, 4, 8, 12];
-    if (kicks.includes(step)) {
-      this.technoKick(time, step === 0 ? 0.155 : 0.132, kickVariant);
-      this.pump(time, step === 0 ? 0.43 : 0.5);
-      this.markTrack('drums', time, step === 0 ? 1 : 0.76, 'kick', [sourceStep?.id].filter(Boolean));
+    const palette = this.drumPalette();
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    const groove = this.constellationGroove;
+    const kicks = groove.kick.length ? groove.kick : [0, 8];
+    if (kicks.includes(grooveStep)) {
+      const accent = groove.accents.includes(grooveStep);
+      this.technoKick(time, (accent ? 0.056 : 0.046) * palette.arrangementGain * AUTOMATIC_KICK_GAIN, palette.arrangementKick);
+      this.pump(time, step === 0 ? 0.76 : 0.82);
+      this.markTrack('drums', time, accent ? 1 : 0.68, 'kick', [sourceStep?.id].filter(Boolean));
     }
     const dense = scene === 5 || scene === 8;
-    const closed = culture === 'chinese' ? [2, 6, 10, 14]
-      : culture === 'indian' ? [1, 3, 6, 9, 11, 14]
-        : dense ? [1, 3, 5, 7, 9, 11, 13, 15] : [2, 6, 10, 14];
-    if (closed.includes(step)) {
-      this.sampleHat(time, dense ? 0.011 : 0.009, (nextStep?.pan ?? 0) * 0.42);
+    if (groove.hats.includes(grooveStep)) {
+      const hatAccent = grooveStep % 8 === 6 || groove.accents.includes(grooveStep);
+      this.sampleHat(time, palette.hatGain * palette.arrangementGain * (dense ? 1.16 : hatAccent ? 1.05 : 0.88), (nextStep?.pan ?? 0) * 0.24);
       this.markTrack('drums', time, 0.36, 'closed-hat', [nextStep?.id].filter(Boolean));
     }
-    const open = culture === 'chinese' ? (dense ? [6, 14] : []) : culture === 'indian' ? [2, 10] : [2, 6, 10, 14];
-    if (open.includes(step) && scene >= 3) {
-      this.sampleOpenHat(time, culture === 'chinese' ? 0.009 : 0.013, (sourceStep?.pan ?? 0) * -0.35);
+    if (groove.open.includes(grooveStep) && scene >= 3) {
+      this.sampleOpenHat(time, palette.openGain * palette.arrangementGain * 0.82, (sourceStep?.pan ?? 0) * -0.24);
       this.markTrack('drums', time, 0.48, 'open-hat', [sourceStep?.id].filter(Boolean));
     }
-    const perc = culture === 'chinese' ? [7, 15] : culture === 'indian' ? [3, 7, 11, 15] : [4, 12];
-    if (perc.includes(step) && (scene === 3 || scene >= 5)) {
-      if (culture === 'western') this.sampleClap(time, 0.012, sourceStep?.pan ?? 0);
-      else this.samplePerc(time, culture === 'chinese' ? 0.009 : 0.011, sourceStep?.pan ?? 0, culture === 'chinese' ? 4100 : 2200);
+    if (groove.perc.includes(grooveStep) && scene >= 4) {
+      if (culture === 'western') this.sampleClap(time, palette.percGain * palette.arrangementGain * 0.72, sourceStep?.pan ?? 0);
+      else this.samplePerc(time, palette.percGain * palette.arrangementGain * 0.72, sourceStep?.pan ?? 0, palette.percFreq);
       this.markTrack('drums', time, 0.54, 'perc', [sourceStep?.id].filter(Boolean));
     }
   }
 
   scheduleBassLane(step, bar, chordDegree, time, sourceStep) {
     const culture = this.profile.cultureId;
-    const patternStep = (bar % 2) * GROOVE_STEPS + step;
-    const event = this.patterns.bass.find((entry) => entry.step === patternStep);
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    const event = this.patterns.bass.find((entry) => entry.step === grooveStep);
     if (!event) return;
     const eightBarPhase = Math.floor(bar / 8);
     let degree = event.degree;
     if (culture === 'western') degree += chordDegree;
-    if (event.index === this.patterns.bass.length - 1 && eightBarPhase % 2 === 1) degree += culture === 'indian' ? 1 : 2;
+    if (event.index === this.patterns.bass.length - 1 && eightBarPhase % 4 === 3) degree += culture === 'indian' ? 0 : 1;
     const note = scaleNote(this.profile.tonic - 12, degree, this.profile.mode);
-    const gain = this.currentScene === 4 || this.currentScene === 8 ? 0.04 : culture === 'indian' ? 0.031 : 0.035;
-    this.electricBass(note, time, BEAT * (culture === 'chinese' ? 0.82 : 0.58), gain * event.accent);
+    const gain = this.currentScene === 4 || this.currentScene === 8 ? 0.037 : culture === 'indian' ? 0.03 : 0.033;
+    this.electricBass(note, time, BEAT * (culture === 'chinese' ? 0.72 : 0.5), gain * event.accent);
     this.markTrack('bass', time, 0.78, 'bass', [sourceStep?.id].filter(Boolean));
   }
 
   scheduleSynthLane(step, bar, chordDegree, time, star) {
     const culture = this.profile.cultureId;
-    const patternStep = (bar % 2) * GROOVE_STEPS + step;
-    const event = this.patterns.synth.find((entry) => entry.step === patternStep);
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    const event = this.patterns.synth.find((entry) => entry.step === grooveStep);
     if (!event) return;
     const variation = Math.floor(bar / 8);
-    if (variation % 4 === 2 && event.index % 7 === 5) return;
+    if (variation % 4 === 2 && event.index % 3 === 2) return;
     let degree = event.degree + (culture === 'western' ? chordDegree : 0);
     if (event.index === this.patterns.synth.length - 1 && variation % 2 === 1) degree += 1;
     const octave = variation % 4 === 3 && event.index % 5 === 0 ? 24 : 12;
     const note = scaleNote(this.profile.tonic + octave, degree, this.profile.mode);
     const build = this.currentScene === 5 ? clamp(this.sectionBar / 7, 0, 1) : 0.35;
     const recipe = culture === 'western' && this.currentScene === 5 ? 'acid-resonant' : this.patterns.synthRecipe;
-    this.synthSequenceVoice(note, time, BEAT * 0.42, 0.018 * event.accent, event.star?.pan ?? star?.pan ?? 0, recipe, build);
+    this.synthSequenceVoice(note, time, BEAT * 0.36, 0.0125 * event.accent, event.star?.pan ?? star?.pan ?? 0, recipe, build);
     this.markTrack('synth', time, 0.64, 'synth-sequence', [event.star?.id || star?.id].filter(Boolean));
   }
 
   scheduleHarmonyLane(step, bar, chordDegree, progressionIndex, time) {
-    if (step !== 0 || (bar !== this.sceneStartedBar && bar % 8 !== 0)) return;
+    if (step !== 0 || (bar !== this.sceneStartedBar && bar % 8 !== 0 && !(this.sectionPhase === 'full' && bar === 2))) return;
     const variant = this.laneVariant('harmony');
     const culture = this.profile.cultureId;
-    const duration = BEAT * 4 * 8.2;
+    const duration = BEAT * 15.5;
     let notes = this.profileChord(chordDegree);
     if (culture === 'chinese') {
       const root = scaleNote(this.profile.tonic, chordDegree, this.profile.mode);
       notes = [root, root + 7, root + 12].slice(0, variant === 0 ? 2 : 3);
     } else if (culture === 'indian') notes = [this.profile.tonic - 12, this.profile.tonic, this.profile.tonic + 7];
-    this.pad(notes, time, duration, culture === 'indian' ? 0.0135 : culture === 'western' ? 0.0115 : 0.0105 + variant * 0.0004);
+    this.pad(notes, time, duration, culture === 'indian' ? 0.007 : culture === 'western' ? 0.0062 : 0.0058 + variant * 0.0002);
     this.markTrack('harmony', time, this.currentSection === 'open' ? 0.82 : 0.58, culture === 'indian' ? 'drone' : 'pad', this.sequence.slice(0, 3).map((star) => star.id));
   }
 
   scheduleLeadLane(step, bar, chordDegree, time, star) {
-    const patternStep = (bar % 4) * GROOVE_STEPS + step;
-    const event = this.patterns.lead.find((entry) => entry.step === patternStep);
+    const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
+    const event = this.patterns.lead.find((entry) => entry.step === grooveStep);
     if (!event) return;
+    if (bar % 8 < 6 || event.index > 1) return;
     const phraseCycle = Math.floor(bar / 4);
     let degree = event.degree + (this.profile.cultureId === 'western' ? chordDegree : 0);
     if (event.index === this.patterns.lead.length - 1 && phraseCycle % 2 === 1) degree += 1;
     const note = scaleNote(this.profile.tonic + 12, degree, this.profile.mode);
     const sourceStar = event.star || star;
-    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.7, 0.018, sourceStar?.pan ?? 0);
-    else if (event.index % 3 === 0) this.acousticFallback(note, time, BEAT * 1.15, 0.018, sourceStar?.pan ?? 0, this.patterns.acousticSlots[event.index % this.patterns.acousticSlots.length]);
-    else this.melodicVoice(note, time, BEAT * 1.5, 0.017, sourceStar?.pan ?? 0);
+    if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.2, 0.0105, sourceStar?.pan ?? 0);
+    else this.acousticFallback(note, time, BEAT * 0.85, 0.0105, sourceStar?.pan ?? 0, this.patterns.acousticSlots[event.index % this.patterns.acousticSlots.length]);
     this.markTrack('lead', time, 0.76, 'melodic-phrase', [sourceStar?.id].filter(Boolean));
   }
 
   scheduleTextureLane(step, bar, time, star) {
     const culture = this.profile.cultureId;
-    if (step === 0 && bar % 8 === 0) {
-      const note = this.noteForStep(star, bar, culture === 'indian' ? 0 : 12);
-      this.sweep(note, time, BEAT * 16, 0.0062, culture === 'chinese' ? 700 : 420, culture === 'western' ? 4400 : 2600, 'sine', (star?.pan ?? 0) * 0.45);
+    if (step === 0 && bar % 8 === 4 && this.sectionPhase !== 'signature') {
+      const note = this.noteForStep(star, bar, 12);
+      this.spaceAtmosphere([this.profile.tonic + 12, this.profile.tonic + 19, note], time, BEAT * 14, 0.0018, (star?.pan ?? 0) * 0.3);
       this.markTrack('texture', time, 0.48, 'texture', [star?.id].filter(Boolean));
     }
     const glitchScene = [5, 7, 8, 9].includes(this.currentScene);
     if (step === 15 && bar % (this.currentScene === 9 ? 4 : 8) === (this.currentScene === 9 ? 3 : 7) && glitchScene) {
-      this.sampleGlitch(time, culture === 'chinese' ? 0.0045 : 0.0075, star?.pan ?? 0, this.profile.seed + bar * 97);
+      this.sampleGlitch(time, culture === 'chinese' ? 0.0032 : 0.0042, star?.pan ?? 0, this.profile.seed + bar * 97);
       this.markTrack('texture', time, 0.56, 'glitch', [star?.id].filter(Boolean));
     }
   }
@@ -1331,12 +1809,24 @@ export class SequencerAudio extends EventTarget {
   scheduleLoopPlayback(stepNumber, time) {
     const session = this.loopSession;
     if (!session?.active) return;
+    const layerIds = [];
     for (const id of session.completed) {
       const layer = session.layers.get(id);
       if (!layer?.events.length) continue;
       const length = layer.bars * GROOVE_STEPS;
-      const relative = ((stepNumber - layer.anchorStep) % length + length) % length;
-      layer.events.filter((event) => event.step === relative).forEach((event) => this.playLoopEvent(id, event, time, false));
+      const origin = session.loopOriginStep ?? layer.anchorStep;
+      const relative = ((stepNumber - origin) % length + length) % length;
+      layer.events.filter((event) => event.step === relative).forEach((event) => {
+        this.playLoopEvent(id, event, time, false);
+        session.playbackCounts[id] = (session.playbackCounts[id] || 0) + 1;
+        if (!layerIds.includes(id)) layerIds.push(id);
+      });
+    }
+    if (layerIds.length) {
+      this.dispatchEvent(new CustomEvent('loop-playback', { detail: {
+        stepNumber, audioTime: time, layerIds,
+        playbackCounts: { ...session.playbackCounts },
+      } }));
     }
   }
 
@@ -1347,13 +1837,13 @@ export class SequencerAudio extends EventTarget {
     const keyboardRow = key < 10 ? 0 : key < 19 ? 1 : 2;
     if (manual) this.duckForManual(time);
     if (stageId === 'drums') {
-      const voice = key % 6;
-      if (voice === 0) { this.technoKick(time, 0.15, this.profile.cultureId === 'western' ? 1 : 0); this.markTrack('drums', time, 1, 'kick', [star?.id].filter(Boolean)); }
-      else if (voice === 1) { this.sampleHat(time, 0.012, star?.pan ?? 0); this.markTrack('drums', time, 0.42, 'closed-hat', [star?.id].filter(Boolean)); }
+      const voice = event.role === 'kick' ? 0 : event.role === 'hat' ? 1 : key % 6;
+      if (voice === 0) { this.technoKick(time, 0.052, this.drumPalette().kick); this.markTrack('drums', time, 0.92, 'kick', [star?.id].filter(Boolean)); }
+      else if (voice === 1) { this.sampleHat(time, 0.0135, star?.pan ?? 0); this.markTrack('drums', time, 0.48, 'closed-hat', [star?.id].filter(Boolean)); }
       else if (voice === 2) { this.sampleOpenHat(time, 0.014, star?.pan ?? 0); this.markTrack('drums', time, 0.5, 'open-hat', [star?.id].filter(Boolean)); }
       else if (voice === 3) { this.sampleClap(time, 0.013, star?.pan ?? 0); this.markTrack('drums', time, 0.58, 'perc', [star?.id].filter(Boolean)); }
       else if (voice === 4) { this.samplePerc(time, 0.012, star?.pan ?? 0, 1900 + degree * 340); this.markTrack('drums', time, 0.5, 'perc', [star?.id].filter(Boolean)); }
-      else { this.sampleGlitch(time, 0.006, star?.pan ?? 0, this.profile.seed + key); this.markTrack('texture', time, 0.52, 'glitch', [star?.id].filter(Boolean)); }
+      else { this.samplePerc(time, 0.009, star?.pan ?? 0, 3000 + degree * 210); this.markTrack('drums', time, 0.52, 'metal-perc', [star?.id].filter(Boolean)); }
       return;
     }
     const rowOctaves = {
@@ -1361,37 +1851,52 @@ export class SequencerAudio extends EventTarget {
     };
     const baseOctave = stageId === 'bass' ? -12 : 0;
     const note = scaleNote(this.profile.tonic + baseOctave + (rowOctaves[stageId]?.[keyboardRow] || 0), degree, this.profile.mode);
-    if (stageId === 'bass') { this.electricBass(note, time, BEAT * 0.65, 0.036); this.markTrack('bass', time, 0.78, 'bass', [star?.id].filter(Boolean)); }
-    else if (stageId === 'synth') { this.synthSequenceVoice(note, time, BEAT * 0.42, 0.019, star?.pan ?? 0, this.patterns.synthRecipe, 0.5); this.markTrack('synth', time, 0.68, 'synth-sequence', [star?.id].filter(Boolean)); }
-    else if (stageId === 'harmony') { this.pad(this.profileChord(degree), time, BEAT * 2.2, 0.012); this.markTrack('harmony', time, 0.64, this.profile.cultureId === 'indian' ? 'drone' : 'pad', [star?.id].filter(Boolean)); }
+    if (stageId === 'bass') { this.electricBass(note, time, BEAT * 0.65, 0.043); this.markTrack('bass', time, 0.78, 'bass', [star?.id].filter(Boolean)); }
+    else if (stageId === 'synth') { this.synthSequenceVoice(note, time, BEAT * 0.42, 0.024, star?.pan ?? 0, this.patterns.synthRecipe, 0.5); this.markTrack('synth', time, 0.68, 'synth-sequence', [star?.id].filter(Boolean)); }
+    else if (stageId === 'harmony') { this.pad(this.profileChord(degree), time, BEAT * 2.2, 0.015); this.markTrack('harmony', time, 0.64, this.profile.cultureId === 'indian' ? 'drone' : 'pad', [star?.id].filter(Boolean)); }
     else if (stageId === 'lead') {
-      if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.3, 0.019, star?.pan ?? 0);
-      else this.acousticFallback(note, time, BEAT * 0.9, 0.019, star?.pan ?? 0, this.patterns.acousticSlots[key % this.patterns.acousticSlots.length]);
+      if (this.profile.cultureId === 'indian') this.ornamentLead(note, time, BEAT * 1.3, 0.024, star?.pan ?? 0);
+      else this.acousticFallback(note, time, BEAT * 0.9, 0.024, star?.pan ?? 0, this.patterns.acousticSlots[key % this.patterns.acousticSlots.length]);
       this.markTrack('lead', time, 0.76, 'melodic-phrase', [star?.id].filter(Boolean));
     } else if (stageId === 'texture') {
       if (key % 2) this.sampleGlitch(time, 0.005, star?.pan ?? 0, this.profile.seed + key);
       else this.sweep(note, time, BEAT * 2.5, 0.006, 480, 3200, 'sine', star?.pan ?? 0);
       this.markTrack('texture', time, 0.54, key % 2 ? 'glitch' : 'texture', [star?.id].filter(Boolean));
     }
+    if (stageId !== 'drums') this.samplePlayer?.playForStar(this.profile.cultureId, key, time, { gain: 0.48, pan: star?.pan ?? 0 });
   }
 
-  connectArrangement(node, delayAmount = 0) {
-    node.connect(this.arrangementBus);
+  connectArrangement(node, delayAmount = 0, reverbAmount = 0) {
+    node.connect(this.musicBus || this.arrangementBus);
     if (delayAmount > 0 && this.delay) {
       const send = this.context.createGain();
       send.gain.value = delayAmount;
       node.connect(send).connect(this.delay);
     }
+    if (reverbAmount > 0 && this.reverbSend) {
+      const roomSend = this.context.createGain();
+      roomSend.gain.value = reverbAmount;
+      node.connect(roomSend).connect(this.reverbSend);
+    }
+  }
+
+  connectPercussion(node, roomAmount = 0.025) {
+    node.connect(this.drumBus || this.arrangementBus);
+    if (roomAmount > 0 && this.reverbSend) {
+      const send = this.context.createGain();
+      send.gain.value = roomAmount;
+      node.connect(send).connect(this.reverbSend);
+    }
   }
 
   pump(time, depth = 0.36) {
-    if (!this.arrangementBus) return;
-    const gain = this.arrangementBus.gain;
+    if (!this.musicBus) return;
+    const gain = this.musicBus.gain;
     gain.setValueAtTime(depth, time);
-    gain.exponentialRampToValueAtTime(ARRANGEMENT_GAIN, time + BEAT * 0.58);
+    gain.exponentialRampToValueAtTime(MUSIC_GAIN, time + BEAT * 0.58);
   }
 
-  sampleHat(time, gain = 0.012, pan = 0) {
+  sampleHat(time, gain = 0.012, pan = 0, route = 'arrangement') {
     if (this.voices >= MAX_VOICES) return;
     const source = this.context.createBufferSource();
     const highpass = this.context.createBiquadFilter();
@@ -1403,7 +1908,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
     panner.pan.value = clamp(pan, -0.75, 0.75);
     source.connect(highpass).connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.04);
+    if (route === 'gesture') panner.connect(this.gestureBus); else this.connectPercussion(panner, 0.018);
     this.register(source);
     source.start(time, unitNoise(time * 37) * 2.6, 0.055); source.stop(time + 0.06);
   }
@@ -1421,7 +1926,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.24);
     panner.pan.value = clamp(pan, -0.75, 0.75);
     source.connect(highpass).connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.08);
+    this.connectPercussion(panner, 0.025);
     this.register(source);
     source.start(time, unitNoise(time * 43) * 2.5, 0.26); source.stop(time + 0.27);
   }
@@ -1440,7 +1945,7 @@ export class SequencerAudio extends EventTarget {
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.085);
     panner.pan.value = clamp(pan, -0.8, 0.8);
     oscillator.connect(band).connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.1);
+    this.connectPercussion(panner, 0.03);
     this.register(oscillator); oscillator.start(time); oscillator.stop(time + 0.1);
   }
 
@@ -1457,7 +1962,7 @@ export class SequencerAudio extends EventTarget {
       envelope.gain.exponentialRampToValueAtTime(0.0001, when + 0.075 + hit * 0.018);
       panner.pan.value = clamp(pan + (hit - 1) * 0.08, -0.8, 0.8);
       source.connect(band).connect(envelope).connect(panner);
-      this.connectArrangement(panner, 0.16);
+      this.connectPercussion(panner, 0.04);
       this.register(source);
       source.start(when, unitNoise(when * 71 + hit) * 2.7, 0.13); source.stop(when + 0.14);
     }
@@ -1486,11 +1991,13 @@ export class SequencerAudio extends EventTarget {
 
   electricBass(note, time, duration, gain) {
     if (this.voices >= MAX_VOICES - 1) return;
+    const highpass = this.context.createBiquadFilter();
     const filter = this.context.createBiquadFilter();
     const envelope = this.context.createGain();
-    filter.type = 'lowpass'; filter.Q.value = 4.2;
-    filter.frequency.setValueAtTime(760, time);
-    filter.frequency.exponentialRampToValueAtTime(180, time + duration);
+    highpass.type = 'highpass'; highpass.frequency.value = 58; highpass.Q.value = 0.55;
+    filter.type = 'lowpass'; filter.Q.value = 2.1;
+    filter.frequency.setValueAtTime(620, time);
+    filter.frequency.exponentialRampToValueAtTime(210, time + duration);
     envelope.gain.setValueAtTime(0.0001, time);
     envelope.gain.exponentialRampToValueAtTime(gain, time + 0.012);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
@@ -1505,11 +2012,11 @@ export class SequencerAudio extends EventTarget {
       const partial = this.context.createGain();
       oscillator.type = type; oscillator.frequency.value = midi(note); oscillator.detune.value = detune;
       partial.gain.value = level;
-      oscillator.connect(partial).connect(filter);
+      oscillator.connect(partial).connect(highpass);
       this.register(oscillator);
       oscillator.start(time); oscillator.stop(time + duration + 0.04);
     }
-    filter.connect(envelope);
+    highpass.connect(filter).connect(envelope);
     this.connectArrangement(envelope);
   }
 
@@ -1576,7 +2083,7 @@ export class SequencerAudio extends EventTarget {
       this.register(oscillator); oscillator.start(time); oscillator.stop(time + duration + 0.04);
     });
     filter.connect(envelope).connect(panner);
-    this.connectArrangement(panner, config.delay);
+    this.connectArrangement(panner, config.delay * 0.72, 0.08);
   }
 
   acousticFallback(note, time, duration, gain, pan, slot = 'stellar') {
@@ -1591,12 +2098,14 @@ export class SequencerAudio extends EventTarget {
   }
 
   pad(notes, time, duration, gain) {
+    const highpass = this.context.createBiquadFilter();
     const filter = this.context.createBiquadFilter();
     const envelope = this.context.createGain();
-    filter.type = 'lowpass'; filter.Q.value = 1.15;
-    filter.frequency.setValueAtTime(360, time);
-    filter.frequency.exponentialRampToValueAtTime(1850, time + duration * 0.48);
-    filter.frequency.exponentialRampToValueAtTime(310, time + duration);
+    highpass.type = 'highpass'; highpass.frequency.value = 220; highpass.Q.value = 0.45;
+    filter.type = 'lowpass'; filter.Q.value = 0.7;
+    filter.frequency.setValueAtTime(900, time);
+    filter.frequency.exponentialRampToValueAtTime(3200, time + duration * 0.48);
+    filter.frequency.exponentialRampToValueAtTime(1100, time + duration);
     envelope.gain.setValueAtTime(0.0001, time);
     envelope.gain.exponentialRampToValueAtTime(gain, time + Math.min(BEAT * 2.6, duration * 0.32));
     envelope.gain.setValueAtTime(gain * 0.88, time + duration * 0.66);
@@ -1606,17 +2115,17 @@ export class SequencerAudio extends EventTarget {
       const oscillator = this.context.createOscillator();
       const partial = this.context.createGain();
       const padTypes = [
-        ['sine', 'triangle'], ['triangle', 'sine'], ['sine', 'sine'], ['triangle', 'sawtooth'],
+        ['triangle', 'sawtooth'], ['triangle', 'triangle'], ['sawtooth', 'triangle'], ['triangle', 'sawtooth'],
       ];
       oscillator.type = padTypes[this.profile.timbre][index % 2];
       oscillator.frequency.value = midi(note); oscillator.detune.value = (index - 1.5) * 6;
-      partial.gain.value = index === 1 ? 0.64 : 0.42;
-      oscillator.connect(partial).connect(filter);
+      partial.gain.value = index === 1 ? 0.38 : 0.26;
+      oscillator.connect(partial).connect(highpass);
       this.register(oscillator);
       oscillator.start(time); oscillator.stop(time + duration + 0.08);
     });
-    filter.connect(envelope);
-    this.connectArrangement(envelope, 0.2);
+    highpass.connect(filter).connect(envelope);
+    this.connectArrangement(envelope, 0.12, 0.32);
 
     // A filtered procedural-air layer gives the sustained chord a physical texture.
     if (this.voices < MAX_VOICES) {
@@ -1624,17 +2133,72 @@ export class SequencerAudio extends EventTarget {
       const airFilter = this.context.createBiquadFilter();
       const airGain = this.context.createGain();
       air.buffer = this.noiseBuffer; air.loop = true;
-      airFilter.type = 'bandpass'; airFilter.Q.value = 0.65;
-      airFilter.frequency.setValueAtTime(520, time);
-      airFilter.frequency.exponentialRampToValueAtTime(1700, time + duration * 0.5);
-      airFilter.frequency.exponentialRampToValueAtTime(430, time + duration);
+      airFilter.type = 'bandpass'; airFilter.Q.value = 0.48;
+      airFilter.frequency.setValueAtTime(1800, time);
+      airFilter.frequency.exponentialRampToValueAtTime(4200, time + duration * 0.5);
+      airFilter.frequency.exponentialRampToValueAtTime(1500, time + duration);
       airGain.gain.setValueAtTime(0.0001, time);
-      airGain.gain.exponentialRampToValueAtTime(gain * 0.22, time + BEAT * 3);
+      airGain.gain.exponentialRampToValueAtTime(gain * 0.34, time + BEAT * 3);
       airGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       air.connect(airFilter).connect(airGain);
-      this.connectArrangement(airGain, 0.16);
+      this.connectArrangement(airGain, 0.08, 0.38);
       this.register(air);
       air.start(time, unitNoise(time * 17) * 2); air.stop(time + duration + 0.05);
+    }
+  }
+
+  spaceAtmosphere(notes, time, duration, gain = 0.004, pan = 0) {
+    if (!this.context || this.voices >= MAX_VOICES - 5 || !this.bedBus) return;
+    const grammar = this.profile.grammar;
+    const bedNotes = [...new Set(notes.slice(0, 2))];
+    const spread = grammar.voicing === 'open-pentatonic' ? 7 : 11;
+    const voices = bedNotes.flatMap((note, index) => [
+      { note: Math.max(note + (index ? 12 : 0), 57), type: 'triangle', detune: -spread, pan: -0.62 + pan * 0.2, level: 0.042 },
+      { note: Math.max(note + 12, 62), type: 'sawtooth', detune: spread, pan: 0.62 + pan * 0.2, level: 0.012 },
+    ]).slice(0, 4);
+    voices.forEach((voice, index) => {
+      if (this.voices >= MAX_VOICES) return;
+      const oscillator = this.context.createOscillator();
+      const highpass = this.context.createBiquadFilter();
+      const lowpass = this.context.createBiquadFilter();
+      const envelope = this.context.createGain();
+      const panner = this.context.createStereoPanner();
+      oscillator.type = voice.type;
+      oscillator.frequency.value = midi(voice.note);
+      oscillator.detune.setValueAtTime(voice.detune, time);
+      oscillator.detune.linearRampToValueAtTime(-voice.detune * 0.7, time + duration);
+      highpass.type = 'highpass'; highpass.frequency.value = 210 + index * 35;
+      lowpass.type = 'lowpass'; lowpass.Q.value = 0.18;
+      lowpass.frequency.setValueAtTime(1200 + index * 180, time);
+      lowpass.frequency.linearRampToValueAtTime(3600 + this.profile.timbre * 180, time + duration * 0.48);
+      lowpass.frequency.linearRampToValueAtTime(1450, time + duration);
+      envelope.gain.setValueAtTime(0.0001, time);
+      envelope.gain.exponentialRampToValueAtTime(Math.max(0.00012, gain * voice.level), time + BEAT * (5.5 + index * 0.25));
+      envelope.gain.setValueAtTime(Math.max(0.00012, gain * voice.level * 0.58), time + duration * 0.68);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+      panner.pan.setValueAtTime(clamp(voice.pan, -0.72, 0.72), time);
+      panner.pan.linearRampToValueAtTime(clamp(-voice.pan * 0.62, -0.72, 0.72), time + duration);
+      oscillator.connect(highpass).connect(lowpass).connect(envelope).connect(panner);
+      this.connectBed(panner, 0.56);
+      this.register(oscillator); oscillator.start(time); oscillator.stop(time + duration + 0.12);
+    });
+    if (this.voices < MAX_VOICES) {
+      const air = this.context.createBufferSource();
+      const highpass = this.context.createBiquadFilter();
+      const lowpass = this.context.createBiquadFilter();
+      const airGain = this.context.createGain();
+      const panner = this.context.createStereoPanner();
+      air.buffer = this.noiseBuffer; air.loop = true;
+      highpass.type = 'highpass'; highpass.frequency.value = 1350;
+      lowpass.type = 'lowpass'; lowpass.frequency.value = 6200;
+      airGain.gain.setValueAtTime(0.0001, time);
+      airGain.gain.exponentialRampToValueAtTime(gain * 0.22, time + BEAT * 5);
+      airGain.gain.setValueAtTime(gain * 0.14, time + duration * 0.72);
+      airGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+      panner.pan.setValueAtTime(-0.32, time); panner.pan.linearRampToValueAtTime(0.32, time + duration);
+      air.connect(highpass).connect(lowpass).connect(airGain).connect(panner);
+      this.connectBed(panner, 0.68);
+      this.register(air); air.start(time, unitNoise(this.profile.seed + time * 13) * 2); air.stop(time + duration + 0.12);
     }
   }
 
@@ -1669,7 +2233,7 @@ export class SequencerAudio extends EventTarget {
       oscillator.start(time); oscillator.stop(time + duration + 0.05);
     });
     filter.connect(envelope).connect(panner);
-    this.connectArrangement(panner, 0.5);
+    this.connectArrangement(panner, 0.32, 0.18);
   }
 
   ornamentLead(note, time, duration, gain, pan = 0) {
@@ -1697,7 +2261,7 @@ export class SequencerAudio extends EventTarget {
     this.register(oscillator); oscillator.start(time); oscillator.stop(time + duration + 0.05);
   }
 
-  technoKick(time, gain = 0.13, variant = 0) {
+  technoKick(time, gain = 0.11, variant = 0, route = 'arrangement') {
     if (this.voices >= MAX_VOICES - 2) return;
     const recipes = [
       { start: 190, end: 42, pitchDecay: 0.055, decay: 0.27, punch: 0.68, click: 0.24 },
@@ -1716,7 +2280,8 @@ export class SequencerAudio extends EventTarget {
     body.frequency.setValueAtTime(recipe.start, time);
     body.frequency.exponentialRampToValueAtTime(recipe.end + 6, time + recipe.pitchDecay);
     body.frequency.exponentialRampToValueAtTime(recipe.end, time + recipe.decay * 0.8);
-    body.connect(bodyEnvelope).connect(this.master);
+    body.connect(bodyEnvelope);
+    if (route === 'gesture') bodyEnvelope.connect(this.gestureBus); else bodyEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(body); body.start(time); body.stop(time + recipe.decay + 0.03);
 
     const punch = this.context.createOscillator();
@@ -1727,7 +2292,8 @@ export class SequencerAudio extends EventTarget {
     punchFilter.type = 'lowpass'; punchFilter.frequency.value = 260; punchFilter.Q.value = 1.8;
     punchEnvelope.gain.setValueAtTime(gain * recipe.punch, time);
     punchEnvelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.115);
-    punch.connect(punchFilter).connect(punchEnvelope).connect(this.master);
+    punch.connect(punchFilter).connect(punchEnvelope);
+    if (route === 'gesture') punchEnvelope.connect(this.gestureBus); else punchEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(punch); punch.start(time); punch.stop(time + 0.13);
 
     const click = this.context.createBufferSource();
@@ -1737,7 +2303,8 @@ export class SequencerAudio extends EventTarget {
     clickFilter.type = 'bandpass'; clickFilter.frequency.value = 3400; clickFilter.Q.value = 1.25;
     clickEnvelope.gain.setValueAtTime(gain * recipe.click, time);
     clickEnvelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
-    click.connect(clickFilter).connect(clickEnvelope).connect(this.master);
+    click.connect(clickFilter).connect(clickEnvelope);
+    if (route === 'gesture') clickEnvelope.connect(this.gestureBus); else clickEnvelope.connect(this.drumBus || this.arrangementBus);
     this.register(click); click.start(time, unitNoise(time * 313) * 2.8, 0.025); click.stop(time + 0.027);
   }
 
@@ -1806,7 +2373,7 @@ export class SequencerAudio extends EventTarget {
     source.start(time); source.stop(time + duration + 0.03);
   }
 
-  kick(time, gain = 0.08, destination = this.master) {
+  kick(time, gain = 0.08, destination = null) {
     if (this.voices >= MAX_VOICES) return;
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
@@ -1814,7 +2381,7 @@ export class SequencerAudio extends EventTarget {
     oscillator.frequency.exponentialRampToValueAtTime(43, time + 0.11);
     envelope.gain.setValueAtTime(gain, time);
     envelope.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
-    oscillator.connect(envelope).connect(destination);
+    oscillator.connect(envelope).connect(destination || this.drumBus || this.master);
     this.register(oscillator);
     oscillator.start(time); oscillator.stop(time + 0.18);
   }
