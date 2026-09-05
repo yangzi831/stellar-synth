@@ -19,7 +19,7 @@ button { font: inherit; }
 .app, .stage { position: relative; width: 100%; height: 100%; overflow: hidden; }
 .stage { touch-action: none; overscroll-behavior: none; }
 .stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
-#visual-bg { z-index: 0; pointer-events: none; opacity: var(--visual-opacity, .42); filter: var(--visual-filter, none); transition: opacity .35s ease, filter .35s ease; }
+#visual-bg { z-index: 0; pointer-events: none; opacity: var(--visual-opacity, .72); filter: var(--visual-filter, none); transition: opacity .35s ease, filter .35s ease; }
 #visual-bg, #visual-bg canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #sky { z-index: 1; }
 .grain {

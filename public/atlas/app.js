@@ -1032,11 +1032,11 @@ function drawStars() {
       : clamp(2.05 - (star.mag + 1) * 0.13, 0.9, 1.55);
     if (selected || star.mag < 3.2) {
       const glow = selected ? 5.4 : 3.3 + (3.2 - star.mag) * 0.75;
-      const glowAlpha = selected ? 0.2 : cultural ? 0.11 : 0.055;
-      ctx.fillStyle = `rgba(220,220,220,${glowAlpha})`;
+      const glowAlpha = selected ? 0.24 : cultural ? 0.16 : 0.07;
+      ctx.fillStyle = `rgba(236,236,236,${glowAlpha})`;
       ctx.beginPath(); ctx.arc(point.x, point.y, glow, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.fillStyle = active ? '#ffffff' : selected ? '#eeeeee' : cultural ? '#a0a0a0' : '#626262';
+    ctx.fillStyle = active ? '#ffffff' : selected ? '#f8f8f8' : cultural ? '#c2c2c2' : '#777777';
     ctx.fillRect(point.x - radius / 2, point.y - radius / 2, radius, radius);
     const controlIndex = state.controlNodes.findIndex((node) => node.step.id === star.id);
     const binding = selected && state.localView
