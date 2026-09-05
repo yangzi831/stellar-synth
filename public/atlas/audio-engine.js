@@ -30,6 +30,12 @@ const MUSIC_GAIN = 1.34;
 const DRUM_GAIN = 0.52;
 const MANUAL_GAIN = 1.95;
 const BED_GAIN = 0.105;
+// Civilizations with dedicated instrument/atmosphere samples keep the
+// automatic arrangement drum bed restrained. Other cultures get a stable,
+// deterministic 60–100% variation per constellation instead of a new random
+// level on every hit. Manual Q/W performance and recorded Loop layers do not
+// use this value.
+const SAMPLE_CULTURES = new Set(['chinese', 'navajo', 'western', 'tukano', 'inuit']);
 const HOLD_THRESHOLD_MS = 350;
 const TWO_BARS = BEAT * 8;
 const MODES = [
@@ -1493,7 +1499,7 @@ export class SequencerAudio extends EventTarget {
   scheduleSubtlePulseLane(step, bar, time, star) {
     const grooveStep = ((bar % 4) * GROOVE_STEPS + step) % 64;
     if (grooveStep % 8 !== 2 || this.constellationGroove.restZones.includes(grooveStep)) return;
-    this.sampleHat(time, 0.0042, (star?.pan ?? 0) * 0.18);
+    this.sampleHat(time, 0.0042 * this.drumPalette().arrangementGain, (star?.pan ?? 0) * 0.18);
     this.markTrack('drums', time, 0.2, 'subtle-pulse', [star?.id].filter(Boolean));
   }
 
@@ -1599,11 +1605,14 @@ export class SequencerAudio extends EventTarget {
 
   drumPalette() {
     const culture = this.profile.cultureId;
-    if (culture === 'chinese') return { kick: 0, hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0 };
-    if (culture === 'western') return { kick: 1, hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1 };
-    if (culture === 'indian') return { kick: 2, hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2 };
-    if (culture === 'northern_andes') return { kick: 3, hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3 };
-    return { kick: this.laneVariant('drums'), hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: this.laneVariant('drums') };
+    const arrangementGain = SAMPLE_CULTURES.has(culture)
+      ? 0.6
+      : 0.6 + unitNoise(this.profile.seed + 731) * 0.4;
+    if (culture === 'chinese') return { kick: 0, hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0, arrangementGain };
+    if (culture === 'western') return { kick: 1, hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1, arrangementGain };
+    if (culture === 'indian') return { kick: 2, hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2, arrangementGain };
+    if (culture === 'northern_andes') return { kick: 3, hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3, arrangementGain };
+    return { kick: this.laneVariant('drums'), hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: this.laneVariant('drums'), arrangementGain };
   }
 
   motifNote(entry, octave = 12) {
@@ -1663,23 +1672,23 @@ export class SequencerAudio extends EventTarget {
     const kicks = groove.kick.length ? groove.kick : [0, 8];
     if (kicks.includes(grooveStep)) {
       const accent = groove.accents.includes(grooveStep);
-      this.technoKick(time, accent ? 0.056 : 0.046, palette.kick);
+      this.technoKick(time, (accent ? 0.056 : 0.046) * palette.arrangementGain, palette.kick);
       this.pump(time, step === 0 ? 0.76 : 0.82);
       this.markTrack('drums', time, accent ? 1 : 0.68, 'kick', [sourceStep?.id].filter(Boolean));
     }
     const dense = scene === 5 || scene === 8;
     if (groove.hats.includes(grooveStep)) {
       const hatAccent = grooveStep % 8 === 6 || groove.accents.includes(grooveStep);
-      this.sampleHat(time, palette.hatGain * (dense ? 1.16 : hatAccent ? 1.05 : 0.88), (nextStep?.pan ?? 0) * 0.24);
+      this.sampleHat(time, palette.hatGain * palette.arrangementGain * (dense ? 1.16 : hatAccent ? 1.05 : 0.88), (nextStep?.pan ?? 0) * 0.24);
       this.markTrack('drums', time, 0.36, 'closed-hat', [nextStep?.id].filter(Boolean));
     }
     if (groove.open.includes(grooveStep) && scene >= 3) {
-      this.sampleOpenHat(time, palette.openGain * 0.82, (sourceStep?.pan ?? 0) * -0.24);
+      this.sampleOpenHat(time, palette.openGain * palette.arrangementGain * 0.82, (sourceStep?.pan ?? 0) * -0.24);
       this.markTrack('drums', time, 0.48, 'open-hat', [sourceStep?.id].filter(Boolean));
     }
     if (groove.perc.includes(grooveStep) && scene >= 4) {
-      if (culture === 'western') this.sampleClap(time, palette.percGain * 0.72, sourceStep?.pan ?? 0);
-      else this.samplePerc(time, palette.percGain * 0.72, sourceStep?.pan ?? 0, palette.percFreq);
+      if (culture === 'western') this.sampleClap(time, palette.percGain * palette.arrangementGain * 0.72, sourceStep?.pan ?? 0);
+      else this.samplePerc(time, palette.percGain * palette.arrangementGain * 0.72, sourceStep?.pan ?? 0, palette.percFreq);
       this.markTrack('drums', time, 0.54, 'perc', [sourceStep?.id].filter(Boolean));
     }
   }
