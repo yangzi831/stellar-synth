@@ -1,5 +1,6 @@
 import { SequencerAudio, BPM } from './audio-engine.js';
 import { VisualSceneHost } from './visual-scene-host.js';
+import { AtmospherePadManager } from './audio/atmosphere-manager.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -20,6 +21,7 @@ const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
 const visualBackground = new VisualSceneHost($('#visual-bg'));
+const atmosphere = new AtmospherePadManager(audio);
 const mobileDetailQuery = window.matchMedia('(max-width: 680px)');
 const activeTouchPointers = new Map();
 let pinchGesture = null;
@@ -604,6 +606,9 @@ async function startGuidedLoop() {
     return;
   }
   const snapshot = await audio.startGuidedLoop();
+  void atmosphere.playForCulture(state.visibleCultureId).catch((error) => {
+    console.warn('Atmosphere pad unavailable', error);
+  });
   $('#status').textContent = `LOOP · COUNT-IN 8 BEATS · ${snapshot.status.toUpperCase()}`;
 }
 
@@ -726,6 +731,10 @@ function populateLandmarkSelect() {
 
 function setVisibleCulture(id, fromId = state.visibleCultureId) {
   if (!state.cultures.has(id)) return;
+  // A culture switch returns to the all-sky view. Let the current pad leave
+  // with the same gentle tail as the visual layer; the next constellation
+  // entry will start the newly mapped pad.
+  atmosphere.stop();
   state.transition = { from: fromId, to: id, started: performance.now(), duration: 1500 };
   state.visibleCultureId = id;
   state.visibleStarIds = state.mode === 'compare'
@@ -810,6 +819,7 @@ function queueCompareSwitch() {
 
 function setCulture(id) {
   const previous = state.visibleCultureId;
+  atmosphere.stop();
   state.cultureId = id;
   if (state.mode === 'compare' && state.compareId === id) {
     state.compareId = id === 'western' ? 'chinese' : 'western';
@@ -837,6 +847,7 @@ function setMode(mode) {
   const previous = state.visibleCultureId;
   const previousSelected = state.selected;
   state.mode = mode;
+  if (mode !== 'play') atmosphere.stop();
   if (mode !== 'compare') {
     if (state.compareTimer) window.clearTimeout(state.compareTimer);
     state.compareTimer = null;
@@ -936,11 +947,17 @@ async function enterLandmark(item = state.selected, startSound = true) {
   state.visualEvents.push({ type: 'enter', point: constellationPoint(item), time: performance.now() });
   $('#status').textContent = `ENTER · ${item.nativeName.toUpperCase()} · INSIDE LOCAL MICRO SEQUENCER`;
   if (startSound && !audio.running) await audio.start();
+  // Starting the pad after the gesture/context is available keeps browser
+  // autoplay policies satisfied while leaving star voices untouched.
+  void atmosphere.playForCulture(state.visibleCultureId).catch((error) => {
+    console.warn('Atmosphere pad unavailable', error);
+  });
 }
 
 function exitLandmark() {
   if (!state.localView) return;
   const item = state.selected;
+  atmosphere.stop();
   resetView();
   state.visualEvents.push({ type: 'exit', point: item ? constellationPoint(item) : null, time: performance.now() });
   $('#status').textContent = `EXIT · ${item?.nativeName?.toUpperCase() || 'LANDMARK'} · CORRIDOR → NEXT NODE`;
@@ -1636,6 +1653,13 @@ audio.addEventListener('gesture', (event) => {
 });
 
 audio.addEventListener('state', (event) => {
+  if (event.detail?.running && state.mode === 'play') {
+    void atmosphere.playForCulture(state.visibleCultureId).catch((error) => {
+      console.warn('Atmosphere pad unavailable', error);
+    });
+  } else if (!event.detail?.running) {
+    atmosphere.stop({ immediate: Boolean(event.detail?.panic) });
+  }
   if (event.detail?.panic) {
     // Panic clears audio and foreground gesture state; keep the mounted visual
     // scene alive so the next PLAY action does not need a full page reload.
@@ -1785,6 +1809,11 @@ $('#play').addEventListener('click', async () => {
     if (first) { showDetail(first); setAudioLandmark(first); }
   }
   const running = await audio.toggle();
+  if (running) {
+    void atmosphere.playForCulture(state.visibleCultureId).catch((error) => {
+      console.warn('Atmosphere pad unavailable', error);
+    });
+  }
   if (running && state.mode === 'compare') {
     state.compareLoops = 0;
     state.compareStartedAt = performance.now();
@@ -1816,6 +1845,7 @@ $('#panic').addEventListener('click', () => {
   state.compareTimer = null; state.compareSwitching = false; state.compareLoops = 0;
   $('#auto').classList.remove('on'); $('#auto').textContent = '自动路径 AUTO ROUTE';
   audio.panic();
+  atmosphere.stop({ immediate: true });
   setPerformanceMode('star');
   particleField.clear();
   state.gestureVisuals.clear(); state.gestureRequests.clear(); state.keyboardGestureIds.clear(); state.keyboardHeld.clear();
