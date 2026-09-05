@@ -630,6 +630,7 @@ function setArrangementMode(mode) {
 function resetView() {
   state.view = { centerRa: 12, centerDec: 0, zoom: 1, panX: 0, panY: 0 };
   state.localView = false;
+  visualBackground.setPresentationMode('atlas');
   updateViewReadout();
 }
 
@@ -734,6 +735,9 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
     console.error('Visual scene failed to load', error);
     stage.dataset.visualSceneError = error.message;
   });
+  // A culture change returns to the all-sky presentation. The next landmark
+  // selection will explicitly promote the scene to focus/playing brightness.
+  visualBackground.setPresentationMode('atlas');
   state.selected = null;
   state.activeStep = -1;
   audio.releaseAll(false);
@@ -878,6 +882,7 @@ function setMode(mode) {
 
 function showDetail(item) {
   state.selected = item;
+  visualBackground.setPresentationMode('focus');
   const current = culture();
   $('#detail-culture').textContent = `${current.regionLabel || current.regionGroup} · ${current.localizedName?.zh || current.nativeName}`;
   const zh = constellationZh(item);
@@ -920,6 +925,7 @@ async function enterLandmark(item = state.selected, startSound = true) {
   if (!item) return;
   if (state.mode !== 'play') setMode('play');
   state.selected = item;
+  visualBackground.setPresentationMode(startSound ? 'playing' : 'focus');
   fitConstellation(item);
   const sequence = sequenceFor(item);
   audio.setSequence(sequence, {
