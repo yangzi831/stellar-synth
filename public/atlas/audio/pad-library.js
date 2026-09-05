@@ -11,13 +11,13 @@ const PAD_LIBRARY = Object.freeze([
     id: 'logicmoon-c',
     file: '/audio/atmosphere/641814__logicmoon__c.mp3',
     // Linear gain, approximately -22 dB before the shared music bus.
-    gain: 0.08,
+    gain: 0.052,
     pan: -0.08,
   }),
   Object.freeze({
     id: 'sergequadrad',
     file: '/audio/atmosphere/654519__sergequadrad.mp3',
-    gain: 0.075,
+    gain: 0.04875,
     pan: 0.07,
   }),
   Object.freeze({
