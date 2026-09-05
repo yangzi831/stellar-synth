@@ -1,5 +1,5 @@
 import { SequencerAudio, BPM } from './audio-engine.js';
-import { VisualBackground } from './visual-background.js';
+import { VisualSceneHost } from './visual-scene-host.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -19,7 +19,7 @@ const overviewCanvas = $('#overview');
 const overviewCtx = overviewCanvas.getContext('2d');
 const stage = $('#stage');
 const audio = new SequencerAudio();
-const visualBackground = new VisualBackground($('#visual-bg'));
+const visualBackground = new VisualSceneHost($('#visual-bg'));
 const mobileDetailQuery = window.matchMedia('(max-width: 680px)');
 const activeTouchPointers = new Map();
 let pinchGesture = null;
@@ -730,7 +730,10 @@ function setVisibleCulture(id, fromId = state.visibleCultureId) {
   state.visibleStarIds = state.mode === 'compare'
     ? new Set([...culture(state.cultureId).stars, ...culture(state.compareId).stars])
     : new Set(culture(id).stars);
-  visualBackground.setCulture(id);
+  visualBackground.setCulture(id).catch((error) => {
+    console.error('Visual scene failed to load', error);
+    stage.dataset.visualSceneError = error.message;
+  });
   state.selected = null;
   state.activeStep = -1;
   audio.releaseAll(false);
@@ -1289,9 +1292,10 @@ function draw(now) {
     beat: musicState.barPhase,
     drone: musicState.padEnvelope,
   });
-  visualBackground.render(now / 1000);
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.23)' : 'rgba(2,2,2,.16)';
+  // The real visual scene owns the background. Keep only a very light veil for
+  // foreground tail cleanup so the star map never blacks out the WebGL scene.
+  ctx.fillStyle = state.localView ? 'rgba(2,2,2,.07)' : 'rgba(2,2,2,.035)';
   ctx.fillRect(0, 0, width, height);
   if (state.transition) {
     const progress = clamp((now - state.transition.started) / state.transition.duration, 0, 1);
@@ -1597,7 +1601,12 @@ audio.addEventListener('star-event', (event) => {
   if (index >= 0) state.activeStep = index;
   state.starEventVisuals.push(detail);
   particleField.queue(detail, 'star');
-  (detail.event?.starIds || []).forEach((id) => visualBackground.triggerStar(state.stars.get(id) || { id }));
+  (detail.event?.starIds || []).forEach((id) => {
+    const star = state.stars.get(id);
+    if (!star) return;
+    const point = starPoint(star);
+    visualBackground.triggerStar({ ...star, screen: { x: point.x, y: point.y, width, height } });
+  });
   $('#arrangement-modes').dataset.profile = detail.profileId;
   $('#arrangement-modes').dataset.eventMode = detail.mode;
   $('#arrangement-modes').dataset.eventSize = String(detail.event.starIds?.length || 0);
@@ -1621,7 +1630,11 @@ audio.addEventListener('gesture', (event) => {
 });
 
 audio.addEventListener('state', (event) => {
-  if (event.detail?.panic) visualBackground.dispose();
+  if (event.detail?.panic) {
+    // Panic clears audio and foreground gesture state; keep the mounted visual
+    // scene alive so the next PLAY action does not need a full page reload.
+    visualBackground.setAudioData({ amplitude: 0, bass: 0, mid: 0, high: 0, energy: 0, beat: 0, drone: 0 });
+  }
 });
 
 audio.addEventListener('arrangement-state', (event) => {
