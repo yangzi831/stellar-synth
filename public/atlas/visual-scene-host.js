@@ -35,7 +35,12 @@ function wrap(instance, { canvas, host, audio, destroy = 'dispose', starMode = '
     },
     triggerEvent(event = {}) { if (call(['triggerEvent'], event)) return; if (event.type === 'kick' || event.type === 'hat') call(['tap', 'trigger', 'pulse'], 0.5, 0.5, clamp(event.intensity ?? 0.7)); },
     resize() { call(['resize']); },
-    dispose() { if (typeof instance?.[destroy] === 'function') instance[destroy](); else instance?.dispose?.(); canvas?.remove(); },
+    dispose() {
+      if (typeof instance?.[destroy] === 'function') instance[destroy](); else instance?.dispose?.();
+      // A few authored scenes create their own canvas inside the host. The
+      // visual host owns this container, so clear those nodes on scene swap.
+      host?.querySelectorAll?.('canvas').forEach((node) => node.remove());
+    },
   };
 }
 
