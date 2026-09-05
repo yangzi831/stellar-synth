@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "policy": "user-provided-mp3-assets-with-synthetic-fallback",
   "bundledRecordings": true,
   "formatPolicy": "mp3-only",
@@ -19,8 +19,63 @@
       "instruments/navajo-01.mp3",
       "instruments/navajo-02.mp3",
       "instruments/navajo-03.mp3"
+    ],
+    "egyptian": [
+      "instruments/shared/shared-ambient-chime.mp3",
+      "instruments/shared/shared-synth-drone.mp3",
+      "instruments/shared/shared-shimmer.mp3"
+    ],
+    "hawaiian_starlines": [
+      "instruments/shared/shared-sparkle.mp3",
+      "instruments/shared/shared-twinkle.mp3",
+      "instruments/shared/shared-auen9.mp3"
+    ],
+    "indian": [
+      "instruments/shared/shared-ambient-chime.mp3",
+      "instruments/shared/shared-shimmer.mp3"
+    ],
+    "maori": [
+      "instruments/shared/shared-auen9.mp3",
+      "instruments/shared/shared-synth-drone.mp3",
+      "instruments/shared/shared-sparkle.mp3"
+    ],
+    "northern_andes": [
+      "instruments/shared/shared-shimmer.mp3",
+      "instruments/shared/shared-ambient-chime.mp3",
+      "instruments/shared/shared-twinkle.mp3"
+    ],
+    "tongan": [
+      "instruments/shared/shared-twinkle.mp3",
+      "instruments/shared/shared-sparkle.mp3"
+    ],
+    "boorong": [
+      "instruments/shared/shared-synth-drone.mp3",
+      "instruments/shared/shared-auen9.mp3",
+      "instruments/shared/shared-ambient-chime.mp3"
+    ],
+    "blackfoot": [
+      "instruments/shared/shared-sparkle.mp3",
+      "instruments/shared/shared-auen9.mp3",
+      "instruments/shared/shared-shimmer.mp3"
+    ],
+    "aztec": [
+      "instruments/shared/shared-twinkle.mp3",
+      "instruments/shared/shared-synth-drone.mp3"
+    ],
+    "tupi": [
+      "instruments/shared/shared-auen9.mp3",
+      "instruments/shared/shared-ambient-chime.mp3",
+      "instruments/shared/shared-shimmer.mp3"
     ]
   },
+  "sharedInstrumentPool": [
+    { "file": "instruments/shared/shared-sparkle.mp3", "sourceFile": "545238__mr_fritz__item-sparkle.mp3" },
+    { "file": "instruments/shared/shared-twinkle.mp3", "sourceFile": "825544__newlocknew__magshim_sparkling-twinkle-bleep-1_em.mp3" },
+    { "file": "instruments/shared/shared-shimmer.mp3", "sourceFile": "434601__wangzhuokun__shimmer_synth_3.mp3" },
+    { "file": "instruments/shared/shared-ambient-chime.mp3", "sourceFile": "198417__divinux__ambientchime.mp3" },
+    { "file": "instruments/shared/shared-synth-drone.mp3", "sourceFile": "61121__humphreyswill__synth-drone-001.mp3" },
+    { "file": "instruments/shared/shared-auen9.mp3", "sourceFile": "591055__paraplex__auen9.mp3" }
+  ],
   "cultures": {
     "chinese": {
       "guzheng": { "directory": "chinese/guzheng/", "fallback": "synthetic-plucked-string" },

@@ -30,6 +30,7 @@ const MUSIC_GAIN = 1.34;
 const DRUM_GAIN = 0.52;
 const MANUAL_GAIN = 1.95;
 const BED_GAIN = 0.105;
+const AUTOMATIC_KICK_GAIN = 0.7;
 // Civilizations with dedicated instrument/atmosphere samples keep the
 // automatic arrangement drum bed restrained. Other cultures get a stable,
 // deterministic 60–100% variation per constellation instead of a new random
@@ -61,6 +62,37 @@ const GROOVE_TEMPLATES = [
   { id: 'syncopated-orbit', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [3,10,15,22,35,42,47,54], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,30,62], perc: [7,39], motifSlots: [1,11,17,25,33,43,49,57], constellationSlots: [5,13,21,37,45,53], restZones: [56,57,58,59] },
   { id: 'wide-pocket', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,11,18,27,34,43,50,59], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [30,62], perc: [15,31,47], motifSlots: [1,7,17,23,33,39,49,55], constellationSlots: [9,25,41,57], restZones: [8,9,10,11] },
   { id: 'hypnotic-answer', kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60], bass: [2,10,14,18,26,30,34,42,46,50,58,62], hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62], open: [14,46], perc: [29,61], motifSlots: [1,9,17,25,35,41,49,57], constellationSlots: [7,15,23,39,47,55], restZones: [52,53,54,55] },
+];
+
+// Four curated drum spines share the same 16-step/bar transport but leave
+// different pockets for the constellation material. Selection is stable for
+// a constellation, so repetition remains hypnotic instead of changing every
+// bar. Q/W performance and Guided LOOP use their existing direct paths.
+const DRUM_GROOVE_FAMILIES = [
+  {
+    id: 'steady-offbeat',
+    kick: [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60],
+    hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62],
+    open: [14,30,46,62], perc: [15,47],
+  },
+  {
+    id: 'broken-answer',
+    kick: [0,4,10,12,16,22,28,32,36,42,44,48,54,60],
+    hats: [2,6,14,18,22,30,34,38,46,50,54,62],
+    open: [14,46,62], perc: [7,27,39,59],
+  },
+  {
+    id: 'half-time-space',
+    kick: [0,8,12,16,24,28,32,40,44,48,56,60],
+    hats: [2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62],
+    open: [6,22,38,54], perc: [11,27,43,59],
+  },
+  {
+    id: 'rolling-hat',
+    kick: [0,4,12,16,20,26,28,32,36,44,48,52,58,60],
+    hats: [2,3,6,10,11,14,18,19,22,26,27,30,34,35,38,42,43,46,50,51,54,58,59,62],
+    open: [14,30,46,62], perc: [15,31,47,63],
+  },
 ];
 
 export const SCENES = [
@@ -494,25 +526,28 @@ export class SequencerAudio extends EventTarget {
     const eventSignature = events.slice(0, 24).map((event) => `${event.id}:${event.starIds?.length || 1}`).join('|');
     const templateIndex = hashText(`groove:${this.profile.seed}:${eventSignature}`) % GROOVE_TEMPLATES.length;
     const template = GROOVE_TEMPLATES[templateIndex];
+    const drumFamilyIndex = hashText(`drum-family:${this.profile.cultureId}:${this.profile.seed}:${eventSignature}`) % DRUM_GROOVE_FAMILIES.length;
+    const drumFamily = DRUM_GROOVE_FAMILIES[drumFamilyIndex];
     const seed = this.profile.seed + templateIndex * 4099;
     const restZones = [...template.restZones];
     const outsideRest = (position) => !restZones.includes(position);
-    const kick = template.kick.filter((position, index) => {
-      // At most one missing quarter-note in four bars, and never the first beat.
-      const omission = 3 + ((seed >>> 5) % 13);
-      return position === 0 || index !== omission || unitNoise(seed + 17) > 0.58;
+    const kick = drumFamily.kick.filter((position, index) => {
+      // Preserve the downbeat and allow at most one bounded omission across
+      // the four-bar family, keeping its identity intact.
+      const omission = 1 + ((seed >>> 5) % Math.max(1, drumFamily.kick.length - 1));
+      return outsideRest(position) && (position === 0 || index !== omission || unitNoise(seed + 17) > 0.72);
     });
-    const hats = template.hats.filter((position, index) => outsideRest(position) && !(index % 8 === 7 && unitNoise(seed + 31) > 0.62));
+    const hats = drumFamily.hats.filter((position, index) => outsideRest(position) && !(index % 8 === 7 && unitNoise(seed + 31) > 0.62));
     const bass = template.bass.filter(outsideRest);
-    const open = template.open.filter(outsideRest);
-    const perc = template.perc.filter(outsideRest).slice(0, 3);
+    const open = drumFamily.open.filter(outsideRest);
+    const perc = drumFamily.perc.filter(outsideRest).slice(0, 3);
     const motifSlots = template.motifSlots.filter(outsideRest);
     const constellationSlots = template.constellationSlots.filter(outsideRest);
     const synth = motifSlots.filter((_, index) => index % 3 === 1).map((position) => (position + 2) % 64).filter(outsideRest);
     const brightAccents = structuralStarts.filter((position, index) => accents[index] >= 0.72).slice(0, 4);
     const accentPoints = unique([0, 16, 32, 48, ...brightAccents]);
     return {
-      id: template.id, primaryPulse: kick, starts: structuralStarts, kick, hats, open, perc, bass, synth,
+      id: template.id, drumFamily: drumFamily.id, drumFamilyIndex, primaryPulse: kick, starts: structuralStarts, kick, hats, open, perc, bass, synth,
       motifSlots, constellationSlots, restZones, accents: accentPoints,
       syncopationPoints: unique([...bass, ...constellationSlots].filter((position) => position % 4 !== 0)),
       signature: structuralStarts.slice(0, 16),
@@ -1608,11 +1643,14 @@ export class SequencerAudio extends EventTarget {
     const arrangementGain = SAMPLE_CULTURES.has(culture)
       ? 0.6
       : 0.6 + unitNoise(this.profile.seed + 731) * 0.4;
-    if (culture === 'chinese') return { kick: 0, hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0, arrangementGain };
-    if (culture === 'western') return { kick: 1, hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1, arrangementGain };
-    if (culture === 'indian') return { kick: 2, hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2, arrangementGain };
-    if (culture === 'northern_andes') return { kick: 3, hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3, arrangementGain };
-    return { kick: this.laneVariant('drums'), hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: this.laneVariant('drums'), arrangementGain };
+    const family = this.constellationGroove?.drumFamilyIndex || 0;
+    const make = (kick, values) => ({ ...values, kick, arrangementKick: (kick + family) % 5, arrangementGain });
+    if (culture === 'chinese') return make(0, { hatGain: 0.010, openGain: 0.010, percFreq: 4100, percGain: 0.010, variant: 0 });
+    if (culture === 'western') return make(1, { hatGain: 0.013, openGain: 0.016, percFreq: 2500, percGain: 0.013, variant: 1 });
+    if (culture === 'indian') return make(2, { hatGain: 0.009, openGain: 0.012, percFreq: 1800, percGain: 0.012, variant: 2 });
+    if (culture === 'northern_andes') return make(3, { hatGain: 0.011, openGain: 0.014, percFreq: 3200, percGain: 0.012, variant: 3 });
+    const kick = this.laneVariant('drums');
+    return make(kick, { hatGain: 0.011, openGain: 0.013, percFreq: 2300, percGain: 0.011, variant: kick });
   }
 
   motifNote(entry, octave = 12) {
@@ -1672,7 +1710,7 @@ export class SequencerAudio extends EventTarget {
     const kicks = groove.kick.length ? groove.kick : [0, 8];
     if (kicks.includes(grooveStep)) {
       const accent = groove.accents.includes(grooveStep);
-      this.technoKick(time, (accent ? 0.056 : 0.046) * palette.arrangementGain, palette.kick);
+      this.technoKick(time, (accent ? 0.056 : 0.046) * palette.arrangementGain * AUTOMATIC_KICK_GAIN, palette.arrangementKick);
       this.pump(time, step === 0 ? 0.76 : 0.82);
       this.markTrack('drums', time, accent ? 1 : 0.68, 'kick', [sourceStep?.id].filter(Boolean));
     }

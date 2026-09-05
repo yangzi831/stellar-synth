@@ -10,6 +10,7 @@ const sampleManifest = JSON.parse(fs.readFileSync(new URL('../public/audio/cultu
 const atmosphereManager = fs.readFileSync(new URL('../public/atlas/audio/atmosphere-manager.js', import.meta.url), 'utf8');
 const samplePlayer = fs.readFileSync(new URL('../public/atlas/audio/sample-player.js', import.meta.url), 'utf8');
 const civilizationSamples = fs.readFileSync(new URL('../public/atlas/audio/civilization-samples.js', import.meta.url), 'utf8');
+const { instrumentSetForCulture } = await import(new URL('../public/atlas/audio/civilization-samples.js', import.meta.url));
 const starIds = new Set(data.stars.map((star) => star.id));
 const cultures = new Map(data.cultures.map((culture) => [culture.id, culture]));
 
@@ -61,6 +62,13 @@ assert(audio.includes('const MAKEUP_GAIN = 1.75'), 'Output makeup stage is missi
 assert(audio.includes('this.limiter.threshold.value = -1'), 'Limiter ceiling must remain near -1 dBFS.');
 assert(audio.includes('const MUSIC_GAIN = 1.34'), 'Foreground musical arrangement bus is missing.');
 assert(audio.includes('const DRUM_GAIN = 0.52'), 'Controlled drum bus level is missing.');
+assert(audio.includes('const AUTOMATIC_KICK_GAIN = 0.7'), 'Automatic kick must be reduced by a further 30%.');
+assert(audio.includes("this.technoKick(time, 0.034, this.drumPalette().kick, 'gesture');"), 'Manual Q kick gain/timbre path must remain unchanged.');
+assert(audio.includes('this.technoKick(time, 0.052, this.drumPalette().kick);'), 'Guided Loop kick playback must remain unchanged.');
+assert(audio.includes('const DRUM_GROOVE_FAMILIES = ['), 'Curated alternate drum families are missing.');
+for (const family of ['steady-offbeat', 'broken-answer', 'half-time-space', 'rolling-hat']) {
+  assert(audio.includes(family), `Missing automatic drum family: ${family}`);
+}
 assert(audio.includes("this.reverbHighpass.type = 'highpass'"), 'Reverb input must remove low-frequency mud.');
 assert(audio.includes('this.reverbPreDelay.delayTime.value'), 'Reverb must preserve dry attacks with pre-delay.');
 assert(audio.includes('const GROOVE_TEMPLATES = ['), 'Curated shared GrooveTemplates are missing.');
@@ -148,6 +156,16 @@ assert(sampleManifest.bundledRecordings === true, 'Bundled MP3 sample manifest i
 assert(sampleManifest.formatPolicy === 'mp3-only', 'Culture recordings must remain MP3-only.');
 assert(sampleManifest.atmosphere?.western?.file && sampleManifest.atmosphere?.tukano?.file && sampleManifest.atmosphere?.inuit?.file, 'Culture atmosphere mapping is incomplete.');
 assert(sampleManifest.instruments?.chinese?.length === 4 && sampleManifest.instruments?.navajo?.length === 3, 'Civilization instrument mapping is incomplete.');
+const sharedInstrumentCultures = ['egyptian', 'hawaiian_starlines', 'indian', 'maori', 'northern_andes', 'tongan', 'boorong', 'blackfoot', 'aztec', 'tupi'];
+for (const cultureId of sharedInstrumentCultures) {
+  const entries = sampleManifest.instruments?.[cultureId];
+  assert(entries?.length >= 2 && entries.length <= 3, `${cultureId} must use a stable 2–3 sample subset.`);
+  assert(new Set(entries).size === entries.length, `${cultureId} shared sample subset contains a duplicate.`);
+  const runtimeEntries = instrumentSetForCulture(cultureId)?.map((entry) => entry.file.replace(/^\/audio\//, '')) || [];
+  assert(JSON.stringify(runtimeEntries) === JSON.stringify(entries), `${cultureId} runtime and manifest sample mappings differ.`);
+}
+for (const cultureId of ['western', 'tukano', 'inuit']) assert(!instrumentSetForCulture(cultureId), `${cultureId} must retain its dedicated atmosphere without a shared instrument overlay.`);
+assert(sampleManifest.sharedInstrumentPool?.length === 6, 'The complete screenshot-provided shared sample pool is missing.');
 assert(atmosphereManager.includes('AudioBufferSourceNode') || atmosphereManager.includes('createBufferSource'), 'Atmosphere layer must use Web Audio buffer sources.');
 assert(atmosphereManager.includes('source.loop = true') && atmosphereManager.includes('fadeInSeconds'), 'Atmosphere layer loop/fade contract is missing.');
 assert(samplePlayer.includes('playForStar') && samplePlayer.includes('this.engine.reverbSend'), 'Instrument sample routing contract is missing.');
@@ -155,6 +173,10 @@ assert(civilizationSamples.includes('CULTURE_INSTRUMENTS') && civilizationSample
 for (const file of [...Object.values(sampleManifest.atmosphere).map((entry) => entry.file), ...Object.values(sampleManifest.instruments).flat()]) {
   assert(/\.mp3$/i.test(file), `Non-MP3 culture recording found: ${file}`);
   assert(fs.existsSync(new URL(`../public/audio/${file}`, import.meta.url)), `Missing bundled culture recording: ${file}`);
+}
+for (const entry of sampleManifest.sharedInstrumentPool) {
+  assert(/\.mp3$/i.test(entry.file), `Non-MP3 shared instrument found: ${entry.file}`);
+  assert(fs.existsSync(new URL(`../public/audio/${entry.file}`, import.meta.url)), `Missing shared instrument: ${entry.file}`);
 }
 for (const cultureId of ['chinese', 'western', 'indian']) assert(sampleManifest.cultures[cultureId], `Missing sample slots for ${cultureId}.`);
 assert(app.includes('audio.visualMusicState()'), 'Particles must read the shared musical state.');

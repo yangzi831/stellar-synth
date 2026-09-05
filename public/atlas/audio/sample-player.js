@@ -87,7 +87,7 @@ export class CivilizationSamplePlayer {
     const start = Math.max(context.currentTime + 0.001, Number(time) || context.currentTime);
     // Keep phrase assets short enough for a playable star hit and avoid
     // stacking multi-second clips on top of the synth voice.
-    const requestedDuration = options.duration ?? Math.min(buffer.duration, 1.85);
+    const requestedDuration = options.duration ?? entry.duration ?? Math.min(buffer.duration, 1.85);
     const duration = Math.max(0.045, Math.min(buffer.duration / source.playbackRate.value, requestedDuration));
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.linearRampToValueAtTime(amount, start + this.fadeInSeconds);
