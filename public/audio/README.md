@@ -1,5 +1,14 @@
-# Optional culture sample slots
+# Culture audio layers
 
-Stellar Synth currently ships with **no recorded samples**. Every listed slot uses a procedural Web Audio fallback.
+This build includes user-provided MP3 assets for three atmosphere beds and two
+instrument sample sets. MP3 is the only bundled recording format.
 
-Future recordings may be placed in the directories declared by `culture-samples.json` only after their source and license have been documented in `THIRD_PARTY_NOTICES.md`. Adding a file does not automatically grant permission to publish it.
+`public/atlas/audio/atmosphere-manager.js` owns looping, fades and atmosphere
+routing. `public/atlas/audio/sample-player.js` owns one-shot instrument loading
+and routing. Both modules retain the procedural Web Audio voices as an immediate
+fallback while a sample is loading or unavailable.
+
+The mapping and gain policy live in `public/atlas/audio/pad-library.js` and
+`public/atlas/audio/civilization-samples.js`. Future recordings may be added
+only after their source and publication permission have been documented in
+`THIRD_PARTY_NOTICES.md`.

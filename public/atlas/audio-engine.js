@@ -3,7 +3,8 @@
  * patch by Ewan Qian / 钱誉文. Used and modified under the MIT License.
  * The signal path remains synthesis-only: oscillators, procedurally generated
  * sample buffers, filtered noise, stereo panning, gain envelopes and dynamics
- * compression. No third-party recording or sample pack is bundled.
+ * compression. Optional user-provided MP3 layers are routed by the dedicated
+ * atmosphere and civilization sample modules, never embedded in star logic.
  */
 
 export const BPM = 123;
@@ -1152,6 +1153,10 @@ export class SequencerAudio extends EventTarget {
     const velocity = clamp(1.12 - (magnitude + 1.3) / 8.5, 0.58, 1);
     const note = this.noteForStep(step, index, 12);
     const pan = clamp((step.pan ?? 0) * 0.82, -0.88, 0.88);
+    // User-provided civilization samples share the same star trigger path as
+    // the procedural voice. If a buffer is not ready, the synth voice below
+    // remains the immediate fallback and no star can become silent.
+    this.samplePlayer?.playForStar(this.profile.cultureId, index, time, { gain: 0.72, pan });
     const instrument = Math.abs((Number(step.id) || index) + index * 3 + this.profile.seed) % 5;
     if (this.voices >= MAX_VOICES - 3) return this.emergencyStarAttack(note, time, 0.11 * velocity, pan);
     let sounded = false;
@@ -1318,6 +1323,10 @@ export class SequencerAudio extends EventTarget {
     const pan = clamp((step.pan ?? 0) * 0.8, -0.85, 0.85);
     const gain = (emphatic ? 0.052 : 0.034) * velocity;
     const role = index % 8;
+    this.samplePlayer?.playForStar(this.profile.cultureId, index, time, {
+      gain: emphatic ? 1 : 0.84,
+      pan,
+    });
 
     if (role === 0) {
       if (includeKick) this.kick(time, 0.035 + velocity * 0.035);
@@ -1402,6 +1411,12 @@ export class SequencerAudio extends EventTarget {
                 : ['triangle', 'sine', 'square'][voiceIndex % 3];
           const cutoff = fragment ? 3900 + voiceIndex * 720 : 2100 + voiceIndex * 480;
           this.tone(note, when + voiceIndex * (fragment ? 0.008 : 0.014), duration, gain, type, cutoff, pan);
+          if (voiceIndex < 2) this.samplePlayer?.playForStar(
+            this.profile.cultureId,
+            this.sequence.findIndex((candidate) => candidate.id === star.id),
+            when + voiceIndex * (fragment ? 0.008 : 0.014),
+            { gain: fragment ? 0.42 : 0.28, pan },
+          );
         });
         if (fragment && event.musicalRole === 'accent') {
           const star = event.stars[event.stars.length - 1];
@@ -1801,6 +1816,7 @@ export class SequencerAudio extends EventTarget {
       else this.sweep(note, time, BEAT * 2.5, 0.006, 480, 3200, 'sine', star?.pan ?? 0);
       this.markTrack('texture', time, 0.54, key % 2 ? 'glitch' : 'texture', [star?.id].filter(Boolean));
     }
+    if (stageId !== 'drums') this.samplePlayer?.playForStar(this.profile.cultureId, key, time, { gain: 0.48, pan: star?.pan ?? 0 });
   }
 
   connectArrangement(node, delayAmount = 0, reverbAmount = 0) {

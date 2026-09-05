@@ -7,6 +7,9 @@ const audio = fs.readFileSync(new URL('../public/atlas/audio-engine.js', import.
 const app = fs.readFileSync(new URL('../public/atlas/app.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../public/atlas/app.css', import.meta.url), 'utf8');
 const sampleManifest = JSON.parse(fs.readFileSync(new URL('../public/audio/culture-samples.json', import.meta.url), 'utf8'));
+const atmosphereManager = fs.readFileSync(new URL('../public/atlas/audio/atmosphere-manager.js', import.meta.url), 'utf8');
+const samplePlayer = fs.readFileSync(new URL('../public/atlas/audio/sample-player.js', import.meta.url), 'utf8');
+const civilizationSamples = fs.readFileSync(new URL('../public/atlas/audio/civilization-samples.js', import.meta.url), 'utf8');
 const starIds = new Set(data.stars.map((star) => star.id));
 const cultures = new Map(data.cultures.map((culture) => [culture.id, culture]));
 
@@ -141,7 +144,18 @@ for (const recipe of ['analog-pluck', 'saw-sequence', 'acid-resonant', 'soft-pol
 }
 assert(!/\['Digit1',\s*'1'\]/.test(app), 'Number keys must not be part of Star keyboard mapping.');
 assert(app.includes("/^Digit[0-9]$/.test(event.code)"), 'Number row Scene mapping is missing.');
-assert(sampleManifest.bundledRecordings === false, 'Sample manifest must not claim bundled recordings.');
+assert(sampleManifest.bundledRecordings === true, 'Bundled MP3 sample manifest is missing.');
+assert(sampleManifest.formatPolicy === 'mp3-only', 'Culture recordings must remain MP3-only.');
+assert(sampleManifest.atmosphere?.western?.file && sampleManifest.atmosphere?.tukano?.file && sampleManifest.atmosphere?.inuit?.file, 'Culture atmosphere mapping is incomplete.');
+assert(sampleManifest.instruments?.chinese?.length === 4 && sampleManifest.instruments?.navajo?.length === 3, 'Civilization instrument mapping is incomplete.');
+assert(atmosphereManager.includes('AudioBufferSourceNode') || atmosphereManager.includes('createBufferSource'), 'Atmosphere layer must use Web Audio buffer sources.');
+assert(atmosphereManager.includes('source.loop = true') && atmosphereManager.includes('fadeInSeconds'), 'Atmosphere layer loop/fade contract is missing.');
+assert(samplePlayer.includes('playForStar') && samplePlayer.includes('this.engine.reverbSend'), 'Instrument sample routing contract is missing.');
+assert(civilizationSamples.includes('CULTURE_INSTRUMENTS') && civilizationSamples.includes('instrumentForStar'), 'Civilization sample mapping is missing.');
+for (const file of [...Object.values(sampleManifest.atmosphere).map((entry) => entry.file), ...Object.values(sampleManifest.instruments).flat()]) {
+  assert(/\.mp3$/i.test(file), `Non-MP3 culture recording found: ${file}`);
+  assert(fs.existsSync(new URL(`../public/audio/${file}`, import.meta.url)), `Missing bundled culture recording: ${file}`);
+}
 for (const cultureId of ['chinese', 'western', 'indian']) assert(sampleManifest.cultures[cultureId], `Missing sample slots for ${cultureId}.`);
 assert(app.includes('audio.visualMusicState()'), 'Particles must read the shared musical state.');
 assert(audio.includes("new CustomEvent('star-event'"), 'Audio and visual grouped events must share StarEvent timing.');
@@ -161,4 +175,4 @@ assert(html.includes('<title>Stellar Synth | 星宿频率</title>'), 'Browser ti
 assert(/\.launch-title h1[^}]*text-transform:\s*none/.test(fs.readFileSync(new URL('../public/atlas/app.css', import.meta.url), 'utf8')), 'English launch title must preserve title case.');
 assert(!/\.(wav|mp3|ogg|flac)/i.test(audio), 'Audio engine unexpectedly references a sample file.');
 
-console.log(`Validated ${data.cultures.length} cultures, ${data.stars.length} stars, fixed-position compare geometry and synthesis-only audio.`);
+console.log(`Validated ${data.cultures.length} cultures, ${data.stars.length} stars, fixed-position compare geometry and layered Web Audio with MP3 fallbacks.`);

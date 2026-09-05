@@ -25,9 +25,9 @@ The reference runtime has one defensive canvas-radius clamp to prevent an interm
 
 ### Audio materials
 
-The D5 runtime and this project generate sound entirely in JavaScript through the Web Audio API. The signal path uses oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, arpeggios, pads, electronic bass, stereo panning, delay, reverb, gain envelopes and dynamics compression. No WAV, MP3, external sample pack, sound font or third-party recording is included.
+The D5 runtime and the core engine generate sound in JavaScript through the Web Audio API. The signal path uses oscillators, procedurally generated and reused percussion/glitch sample buffers, filtered noise, arpeggios, pads, electronic bass, stereo panning, delay, reverb, gain envelopes and dynamics compression. The current build additionally includes user-provided MP3 files in `public/audio/atmosphere/culture/` and `public/audio/instruments/`; they are routed only by the dedicated audio layer modules and are not presented as upstream or third-party sample-pack content.
 
-`public/audio/culture-samples.json` is a manifest of empty future recording slots, not bundled media. Its current entries use procedural synthesis fallbacks. Any recording added later requires a separate source and license review and must be documented here before publication.
+The MP3 filenames and civilization assignments were supplied locally by the project owner. Their external source/licensing metadata was not provided in this workspace; the files should be replaced or separately cleared before any distribution that requires third-party provenance. The procedural synthesis fallback remains available for every missing or unavailable sample.
 
 ## Stellarium Sky Cultures
 

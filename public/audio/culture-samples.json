@@ -1,7 +1,26 @@
 {
-  "version": 1,
-  "policy": "optional-licensed-user-assets-with-synthetic-fallback",
-  "bundledRecordings": false,
+  "version": 2,
+  "policy": "user-provided-mp3-assets-with-synthetic-fallback",
+  "bundledRecordings": true,
+  "formatPolicy": "mp3-only",
+  "atmosphere": {
+    "western": { "file": "atmosphere/culture/western-classical-choirs.mp3", "role": "looping-atmosphere" },
+    "tukano": { "file": "atmosphere/culture/tukano-natural.mp3", "role": "looping-atmosphere" },
+    "inuit": { "file": "atmosphere/culture/inuit-breath-texture.mp3", "role": "looping-atmosphere" }
+  },
+  "instruments": {
+    "chinese": [
+      "instruments/china-01.mp3",
+      "instruments/china-02.mp3",
+      "instruments/china-03.mp3",
+      "instruments/china-04.mp3"
+    ],
+    "navajo": [
+      "instruments/navajo-01.mp3",
+      "instruments/navajo-02.mp3",
+      "instruments/navajo-03.mp3"
+    ]
+  },
   "cultures": {
     "chinese": {
       "guzheng": { "directory": "chinese/guzheng/", "fallback": "synthetic-plucked-string" },

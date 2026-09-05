@@ -12,6 +12,9 @@ const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, Number(va
 export class AtmospherePadManager {
   constructor(engine, options = {}) {
     this.engine = engine;
+    this.resolvePad = options.resolvePad || padForCulture;
+    this.busGainLevel = Number.isFinite(options.busGain) ? options.busGain : 1;
+    this.reverbSendLevel = Number.isFinite(options.reverbSend) ? options.reverbSend : 0.11;
     this.fadeInSeconds = clamp(options.fadeInSeconds ?? 1.4, 0.2, 3);
     this.fadeOutSeconds = clamp(options.fadeOutSeconds ?? 1.25, 0.2, 3);
     this.crossfadeSeconds = clamp(options.crossfadeSeconds ?? 0.09, 0.02, 0.3);
@@ -32,7 +35,7 @@ export class AtmospherePadManager {
     if (this.busReady) return context;
 
     this.busGain = context.createGain();
-    this.busGain.gain.value = 1;
+    this.busGain.gain.value = this.busGainLevel;
     this.highpass = context.createBiquadFilter();
     this.highpass.type = 'highpass';
     this.highpass.frequency.value = 92;
@@ -50,7 +53,7 @@ export class AtmospherePadManager {
     // pad behind the dry star transient without washing the whole mix out.
     if (this.engine.reverbSend) {
       const send = context.createGain();
-      send.gain.value = 0.11;
+      send.gain.value = this.reverbSendLevel;
       this.panner.connect(send).connect(this.engine.reverbSend);
       this.reverbSend = send;
     }
@@ -117,7 +120,11 @@ export class AtmospherePadManager {
   async playForCulture(cultureId = '') {
     const token = ++this.switchToken;
     const context = await this.ensureBus();
-    const pad = padForCulture(cultureId);
+    const pad = this.resolvePad(cultureId);
+    if (!pad) {
+      this.stop();
+      return false;
+    }
     const buffer = await this.loadBuffer(pad);
     if (token !== this.switchToken) return false;
 
