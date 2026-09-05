@@ -323,6 +323,7 @@ var EventDispatcher = class {
   }
 };
 var _lut = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "0a", "0b", "0c", "0d", "0e", "0f", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "1a", "1b", "1c", "1d", "1e", "1f", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "2a", "2b", "2c", "2d", "2e", "2f", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "3a", "3b", "3c", "3d", "3e", "3f", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "4a", "4b", "4c", "4d", "4e", "4f", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "5a", "5b", "5c", "5d", "5e", "5f", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "6a", "6b", "6c", "6d", "6e", "6f", "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "7a", "7b", "7c", "7d", "7e", "7f", "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "8a", "8b", "8c", "8d", "8e", "8f", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "9a", "9b", "9c", "9d", "9e", "9f", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "aa", "ab", "ac", "ad", "ae", "af", "b0", "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "ba", "bb", "bc", "bd", "be", "bf", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "ca", "cb", "cc", "cd", "ce", "cf", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "da", "db", "dc", "dd", "de", "df", "e0", "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8", "e9", "ea", "eb", "ec", "ed", "ee", "ef", "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "fa", "fb", "fc", "fd", "fe", "ff"];
+var _seed = 1234567;
 var DEG2RAD = Math.PI / 180;
 var RAD2DEG = 180 / Math.PI;
 function generateUUID() {
@@ -339,8 +340,101 @@ function clamp(value, min, max) {
 function euclideanModulo(n, m) {
   return (n % m + m) % m;
 }
+function mapLinear(x, a1, a2, b1, b2) {
+  return b1 + (x - a1) * (b2 - b1) / (a2 - a1);
+}
+function inverseLerp(x, y, value) {
+  if (x !== y) {
+    return (value - x) / (y - x);
+  } else {
+    return 0;
+  }
+}
 function lerp(x, y, t) {
   return (1 - t) * x + t * y;
+}
+function damp(x, y, lambda, dt) {
+  return lerp(x, y, 1 - Math.exp(-lambda * dt));
+}
+function pingpong(x, length = 1) {
+  return length - Math.abs(euclideanModulo(x, length * 2) - length);
+}
+function smoothstep(x, min, max) {
+  if (x <= min) return 0;
+  if (x >= max) return 1;
+  x = (x - min) / (max - min);
+  return x * x * (3 - 2 * x);
+}
+function smootherstep(x, min, max) {
+  if (x <= min) return 0;
+  if (x >= max) return 1;
+  x = (x - min) / (max - min);
+  return x * x * x * (x * (x * 6 - 15) + 10);
+}
+function randInt(low, high) {
+  return low + Math.floor(Math.random() * (high - low + 1));
+}
+function randFloat(low, high) {
+  return low + Math.random() * (high - low);
+}
+function randFloatSpread(range) {
+  return range * (0.5 - Math.random());
+}
+function seededRandom(s) {
+  if (s !== void 0) _seed = s;
+  let t = _seed += 1831565813;
+  t = Math.imul(t ^ t >>> 15, t | 1);
+  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+function degToRad(degrees) {
+  return degrees * DEG2RAD;
+}
+function radToDeg(radians) {
+  return radians * RAD2DEG;
+}
+function isPowerOfTwo(value) {
+  return (value & value - 1) === 0 && value !== 0;
+}
+function ceilPowerOfTwo(value) {
+  return Math.pow(2, Math.ceil(Math.log(value) / Math.LN2));
+}
+function floorPowerOfTwo(value) {
+  return Math.pow(2, Math.floor(Math.log(value) / Math.LN2));
+}
+function setQuaternionFromProperEuler(q, a, b, c, order) {
+  const cos = Math.cos;
+  const sin = Math.sin;
+  const c2 = cos(b / 2);
+  const s2 = sin(b / 2);
+  const c13 = cos((a + c) / 2);
+  const s13 = sin((a + c) / 2);
+  const c1_3 = cos((a - c) / 2);
+  const s1_3 = sin((a - c) / 2);
+  const c3_1 = cos((c - a) / 2);
+  const s3_1 = sin((c - a) / 2);
+  switch (order) {
+    case "XYX":
+      q.set(c2 * s13, s2 * c1_3, s2 * s1_3, c2 * c13);
+      break;
+    case "YZY":
+      q.set(s2 * s1_3, c2 * s13, s2 * c1_3, c2 * c13);
+      break;
+    case "ZXZ":
+      q.set(s2 * c1_3, s2 * s1_3, c2 * s13, c2 * c13);
+      break;
+    case "XZX":
+      q.set(c2 * s13, s2 * s3_1, s2 * c3_1, c2 * c13);
+      break;
+    case "YXY":
+      q.set(s2 * c3_1, c2 * s13, s2 * s3_1, c2 * c13);
+      break;
+    case "ZYZ":
+      q.set(s2 * s3_1, s2 * c3_1, c2 * s13, c2 * c13);
+      break;
+    default:
+      warn("MathUtils: .setQuaternionFromProperEuler() encountered an unknown order: " + order);
+  }
 }
 function denormalize(value, array) {
   switch (array.constructor) {
@@ -382,6 +476,250 @@ function normalize(value, array) {
       throw new Error("THREE.MathUtils: Invalid component type.");
   }
 }
+var MathUtils = {
+  DEG2RAD,
+  RAD2DEG,
+  /**
+   * Generate a [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier)
+   * (universally unique identifier).
+   *
+   * @static
+   * @method
+   * @return {string} The UUID.
+   */
+  generateUUID,
+  /**
+   * Clamps the given value between min and max.
+   *
+   * @static
+   * @method
+   * @param {number} value - The value to clamp.
+   * @param {number} min - The min value.
+   * @param {number} max - The max value.
+   * @return {number} The clamped value.
+   */
+  clamp,
+  /**
+   * Computes the Euclidean modulo of the given parameters that
+   * is `( ( n % m ) + m ) % m`.
+   *
+   * @static
+   * @method
+   * @param {number} n - The first parameter.
+   * @param {number} m - The second parameter.
+   * @return {number} The Euclidean modulo.
+   */
+  euclideanModulo,
+  /**
+   * Performs a linear mapping from range `<a1, a2>` to range `<b1, b2>`
+   * for the given value.
+   *
+   * @static
+   * @method
+   * @param {number} x - The value to be mapped.
+   * @param {number} a1 - Minimum value for range A.
+   * @param {number} a2 - Maximum value for range A.
+   * @param {number} b1 - Minimum value for range B.
+   * @param {number} b2 - Maximum value for range B.
+   * @return {number} The mapped value.
+   */
+  mapLinear,
+  /**
+   * Returns the percentage in the closed interval `[0, 1]` of the given value
+   * between the start and end point.
+   *
+   * @static
+   * @method
+   * @param {number} x - The start point
+   * @param {number} y - The end point.
+   * @param {number} value - A value between start and end.
+   * @return {number} The interpolation factor.
+   */
+  inverseLerp,
+  /**
+   * Returns a value linearly interpolated from two known points based on the given interval -
+   * `t = 0` will return `x` and `t = 1` will return `y`.
+   *
+   * @static
+   * @method
+   * @param {number} x - The start point
+   * @param {number} y - The end point.
+   * @param {number} t - The interpolation factor in the closed interval `[0, 1]`.
+   * @return {number} The interpolated value.
+   */
+  lerp,
+  /**
+   * Smoothly interpolate a number from `x` to `y` in  a spring-like manner using a delta
+   * time to maintain frame rate independent movement. For details, see
+   * [Frame rate independent damping using lerp](http://www.rorydriscoll.com/2016/03/07/frame-rate-independent-damping-using-lerp/).
+   *
+   * @static
+   * @method
+   * @param {number} x - The current point.
+   * @param {number} y - The target point.
+   * @param {number} lambda - A higher lambda value will make the movement more sudden,
+   * and a lower value will make the movement more gradual.
+   * @param {number} dt - Delta time in seconds.
+   * @return {number} The interpolated value.
+   */
+  damp,
+  /**
+   * Returns a value that alternates between `0` and the given `length` parameter.
+   *
+   * @static
+   * @method
+   * @param {number} x - The value to pingpong.
+   * @param {number} [length=1] - The positive value the function will pingpong to.
+   * @return {number} The alternated value.
+   */
+  pingpong,
+  /**
+   * Returns a value in the range `[0,1]` that represents the percentage that `x` has
+   * moved between `min` and `max`, but smoothed or slowed down the closer `x` is to
+   * the `min` and `max`.
+   *
+   * See [Smoothstep](http://en.wikipedia.org/wiki/Smoothstep) for more details.
+   *
+   * @static
+   * @method
+   * @param {number} x - The value to evaluate based on its position between min and max.
+   * @param {number} min - The min value. Any x value below min will be `0`.
+   * @param {number} max - The max value. Any x value above max will be `1`.
+   * @return {number} The alternated value.
+   */
+  smoothstep,
+  /**
+   * A [variation on smoothstep](https://en.wikipedia.org/wiki/Smoothstep#Variations)
+   * that has zero 1st and 2nd order derivatives at x=0 and x=1.
+   *
+   * @static
+   * @method
+   * @param {number} x - The value to evaluate based on its position between min and max.
+   * @param {number} min - The min value. Any x value below min will be `0`.
+   * @param {number} max - The max value. Any x value above max will be `1`.
+   * @return {number} The alternated value.
+   */
+  smootherstep,
+  /**
+   * Returns a random integer from `<low, high>` interval.
+   *
+   * @static
+   * @method
+   * @param {number} low - The lower value boundary.
+   * @param {number} high - The upper value boundary
+   * @return {number} A random integer.
+   */
+  randInt,
+  /**
+   * Returns a random float from `<low, high>` interval.
+   *
+   * @static
+   * @method
+   * @param {number} low - The lower value boundary.
+   * @param {number} high - The upper value boundary
+   * @return {number} A random float.
+   */
+  randFloat,
+  /**
+   * Returns a random integer from `<-range/2, range/2>` interval.
+   *
+   * @static
+   * @method
+   * @param {number} range - Defines the value range.
+   * @return {number} A random float.
+   */
+  randFloatSpread,
+  /**
+   * Returns a deterministic pseudo-random float in the interval `[0, 1]`.
+   *
+   * @static
+   * @method
+   * @param {number} [s] - The integer seed.
+   * @return {number} A random float.
+   */
+  seededRandom,
+  /**
+   * Converts degrees to radians.
+   *
+   * @static
+   * @method
+   * @param {number} degrees - A value in degrees.
+   * @return {number} The converted value in radians.
+   */
+  degToRad,
+  /**
+   * Converts radians to degrees.
+   *
+   * @static
+   * @method
+   * @param {number} radians - A value in radians.
+   * @return {number} The converted value in degrees.
+   */
+  radToDeg,
+  /**
+   * Returns `true` if the given number is a power of two.
+   *
+   * @static
+   * @method
+   * @param {number} value - The value to check.
+   * @return {boolean} Whether the given number is a power of two or not.
+   */
+  isPowerOfTwo,
+  /**
+   * Returns the smallest power of two that is greater than or equal to the given number.
+   *
+   * @static
+   * @method
+   * @param {number} value - The value to find a POT for.
+   * @return {number} The smallest power of two that is greater than or equal to the given number.
+   */
+  ceilPowerOfTwo,
+  /**
+   * Returns the largest power of two that is less than or equal to the given number.
+   *
+   * @static
+   * @method
+   * @param {number} value - The value to find a POT for.
+   * @return {number} The largest power of two that is less than or equal to the given number.
+   */
+  floorPowerOfTwo,
+  /**
+   * Sets the given quaternion from the [Intrinsic Proper Euler Angles](https://en.wikipedia.org/wiki/Euler_angles)
+   * defined by the given angles and order.
+   *
+   * Rotations are applied to the axes in the order specified by order:
+   * rotation by angle `a` is applied first, then by angle `b`, then by angle `c`.
+   *
+   * @static
+   * @method
+   * @param {Quaternion} q - The quaternion to set.
+   * @param {number} a - The rotation applied to the first axis, in radians.
+   * @param {number} b - The rotation applied to the second axis, in radians.
+   * @param {number} c - The rotation applied to the third axis, in radians.
+   * @param {('XYX'|'XZX'|'YXY'|'YZY'|'ZXZ'|'ZYZ')} order - A string specifying the axes order.
+   */
+  setQuaternionFromProperEuler,
+  /**
+   * Normalizes the given value according to the given typed array.
+   *
+   * @static
+   * @method
+   * @param {number} value - The float value in the range `[0,1]` to normalize.
+   * @param {TypedArray} array - The typed array that defines the data type of the value.
+   * @return {number} The normalize value.
+   */
+  normalize,
+  /**
+   * Denormalizes the given value according to the given typed array.
+   *
+   * @static
+   * @method
+   * @param {number} value - The value to denormalize.
+   * @param {TypedArray} array - The typed array that defines the data type of the value.
+   * @return {number} The denormalize (float) value in the range `[0,1]`.
+   */
+  denormalize
+};
 var _Vector2 = class _Vector2 {
   /**
    * Constructs a new 2D vector.
@@ -2753,17 +3091,17 @@ var _Matrix3 = class _Matrix3 {
    * @return {Matrix3} A reference to this matrix.
    */
   transpose() {
-    let tmp;
+    let tmp3;
     const m = this.elements;
-    tmp = m[1];
+    tmp3 = m[1];
     m[1] = m[3];
-    m[3] = tmp;
-    tmp = m[2];
+    m[3] = tmp3;
+    tmp3 = m[2];
     m[2] = m[6];
-    m[6] = tmp;
-    tmp = m[5];
+    m[6] = tmp3;
+    tmp3 = m[5];
     m[5] = m[7];
-    m[7] = tmp;
+    m[7] = tmp3;
     return this;
   }
   /**
@@ -5188,25 +5526,25 @@ var _Matrix4 = class _Matrix4 {
    */
   transpose() {
     const te = this.elements;
-    let tmp;
-    tmp = te[1];
+    let tmp3;
+    tmp3 = te[1];
     te[1] = te[4];
-    te[4] = tmp;
-    tmp = te[2];
+    te[4] = tmp3;
+    tmp3 = te[2];
     te[2] = te[8];
-    te[8] = tmp;
-    tmp = te[6];
+    te[8] = tmp3;
+    tmp3 = te[6];
     te[6] = te[9];
-    te[9] = tmp;
-    tmp = te[3];
+    te[9] = tmp3;
+    tmp3 = te[3];
     te[3] = te[12];
-    te[12] = tmp;
-    tmp = te[7];
+    te[12] = tmp3;
+    tmp3 = te[7];
     te[7] = te[13];
-    te[13] = tmp;
-    tmp = te[11];
+    te[13] = tmp3;
+    tmp3 = te[11];
     te[11] = te[14];
-    te[14] = tmp;
+    te[14] = tmp3;
     return this;
   }
   /**
@@ -6781,11 +7119,11 @@ var Object3D = class _Object3D extends EventDispatcher {
     this.matrix.compose(this.position, this.quaternion, this.scale);
     const pivot = this.pivot;
     if (pivot !== null) {
-      const px = pivot.x, py = pivot.y, pz = pivot.z;
+      const px2 = pivot.x, py2 = pivot.y, pz2 = pivot.z;
       const te = this.matrix.elements;
-      te[12] += px - te[0] * px - te[4] * py - te[8] * pz;
-      te[13] += py - te[1] * px - te[5] * py - te[9] * pz;
-      te[14] += pz - te[2] * px - te[6] * py - te[10] * pz;
+      te[12] += px2 - te[0] * px2 - te[4] * py2 - te[8] * pz2;
+      te[13] += py2 - te[1] * px2 - te[5] * py2 - te[9] * pz2;
+      te[14] += pz2 - te[2] * px2 - te[6] * py2 - te[10] * pz2;
     }
     this.matrixWorldNeedsUpdate = true;
   }
@@ -10266,18 +10604,18 @@ var BufferGeometry = class _BufferGeometry extends EventDispatcher {
         );
       }
     }
-    const tmp = new Vector3(), tmp2 = new Vector3();
+    const tmp3 = new Vector3(), tmp22 = new Vector3();
     const n = new Vector3(), n2 = new Vector3();
     function handleVertex(v) {
       n.fromBufferAttribute(normalAttribute, v);
       n2.copy(n);
       const t = tan1[v];
-      tmp.copy(t);
-      tmp.sub(n.multiplyScalar(n.dot(t))).normalize();
-      tmp2.crossVectors(n2, t);
-      const test = tmp2.dot(tan2[v]);
+      tmp3.copy(t);
+      tmp3.sub(n.multiplyScalar(n.dot(t))).normalize();
+      tmp22.crossVectors(n2, t);
+      const test = tmp22.dot(tan2[v]);
       const w = test < 0 ? -1 : 1;
-      tangentAttribute.setXYZW(v, tmp.x, tmp.y, tmp.z, w);
+      tangentAttribute.setXYZW(v, tmp3.x, tmp3.y, tmp3.z, w);
     }
     for (let i = 0, il = groups.length; i < il; ++i) {
       const group = groups[i];
@@ -11735,12 +12073,12 @@ var Sprite = class extends Object3D {
     _uvA.set(0, 0);
     _uvB.set(1, 0);
     _uvC.set(1, 1);
-    let intersect = raycaster.ray.intersectTriangle(_vA$1, _vB$1, _vC$1, false, _intersectPoint);
-    if (intersect === null) {
+    let intersect2 = raycaster.ray.intersectTriangle(_vA$1, _vB$1, _vC$1, false, _intersectPoint);
+    if (intersect2 === null) {
       transformVertex(_vB$1.set(-0.5, 0.5, 0), _mvPosition, center, _worldScale, sin, cos);
       _uvB.set(0, 1);
-      intersect = raycaster.ray.intersectTriangle(_vA$1, _vC$1, _vB$1, false, _intersectPoint);
-      if (intersect === null) {
+      intersect2 = raycaster.ray.intersectTriangle(_vA$1, _vC$1, _vB$1, false, _intersectPoint);
+      if (intersect2 === null) {
         return;
       }
     }
@@ -12415,13 +12753,13 @@ var Mesh = class extends Object3D {
   }
 };
 function checkIntersection$1(object, material, raycaster, ray, pA, pB, pC, point) {
-  let intersect;
+  let intersect2;
   if (material.side === BackSide) {
-    intersect = ray.intersectTriangle(pC, pB, pA, true, point);
+    intersect2 = ray.intersectTriangle(pC, pB, pA, true, point);
   } else {
-    intersect = ray.intersectTriangle(pA, pB, pC, material.side === FrontSide, point);
+    intersect2 = ray.intersectTriangle(pA, pB, pC, material.side === FrontSide, point);
   }
-  if (intersect === null) return null;
+  if (intersect2 === null) return null;
   _intersectionPointWorld.copy(point);
   _intersectionPointWorld.applyMatrix4(object.matrixWorld);
   const distance = raycaster.ray.origin.distanceTo(_intersectionPointWorld);
@@ -13028,32 +13366,32 @@ var Line = class extends Object3D {
       for (let i = start, l = end - 1; i < l; i += step) {
         const a = index.getX(i);
         const b = index.getX(i + 1);
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, i);
-        if (intersect) {
-          intersects.push(intersect);
+        const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, i);
+        if (intersect2) {
+          intersects.push(intersect2);
         }
       }
       if (this.isLineLoop) {
         const a = index.getX(end - 1);
         const b = index.getX(start);
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, end - 1);
-        if (intersect) {
-          intersects.push(intersect);
+        const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, end - 1);
+        if (intersect2) {
+          intersects.push(intersect2);
         }
       }
     } else {
       const start = Math.max(0, drawRange.start);
       const end = Math.min(positionAttribute.count, drawRange.start + drawRange.count);
       for (let i = start, l = end - 1; i < l; i += step) {
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, i, i + 1, i);
-        if (intersect) {
-          intersects.push(intersect);
+        const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, i, i + 1, i);
+        if (intersect2) {
+          intersects.push(intersect2);
         }
       }
       if (this.isLineLoop) {
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, end - 1, start, end - 1);
-        if (intersect) {
-          intersects.push(intersect);
+        const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, end - 1, start, end - 1);
+        if (intersect2) {
+          intersects.push(intersect2);
         }
       }
     }
@@ -13487,6 +13825,449 @@ var BoxGeometry = class _BoxGeometry extends BufferGeometry {
     return new _BoxGeometry(data.width, data.height, data.depth, data.widthSegments, data.heightSegments, data.depthSegments);
   }
 };
+var Curve = class {
+  /**
+   * Constructs a new curve.
+   */
+  constructor() {
+    this.type = "Curve";
+    this.arcLengthDivisions = 200;
+    this.needsUpdate = false;
+    this.cacheArcLengths = null;
+  }
+  /**
+   * This method returns a vector in 2D or 3D space (depending on the curve definition)
+   * for the given interpolation factor.
+   *
+   * @abstract
+   * @param {number} t - A interpolation factor representing a position on the curve. Must be in the range `[0,1]`.
+   * @param {(Vector2|Vector3)} [optionalTarget] - The optional target vector the result is written to.
+   * @return {(Vector2|Vector3)} The position on the curve. It can be a 2D or 3D vector depending on the curve definition.
+   */
+  getPoint() {
+    warn("Curve: .getPoint() not implemented.");
+  }
+  /**
+   * This method returns a vector in 2D or 3D space (depending on the curve definition)
+   * for the given interpolation factor. Unlike {@link Curve#getPoint}, this method honors the length
+   * of the curve which equidistant samples.
+   *
+   * @param {number} u - A interpolation factor representing a position on the curve. Must be in the range `[0,1]`.
+   * @param {(Vector2|Vector3)} [optionalTarget] - The optional target vector the result is written to.
+   * @return {(Vector2|Vector3)} The position on the curve. It can be a 2D or 3D vector depending on the curve definition.
+   */
+  getPointAt(u, optionalTarget) {
+    const t = this.getUtoTmapping(u);
+    return this.getPoint(t, optionalTarget);
+  }
+  /**
+   * This method samples the curve via {@link Curve#getPoint} and returns an array of points representing
+   * the curve shape.
+   *
+   * @param {number} [divisions=5] - The number of divisions.
+   * @return {Array<(Vector2|Vector3)>} An array holding the sampled curve values. The number of points is `divisions + 1`.
+   */
+  getPoints(divisions = 5) {
+    const points = [];
+    for (let d = 0; d <= divisions; d++) {
+      points.push(this.getPoint(d / divisions));
+    }
+    return points;
+  }
+  // Get sequence of points using getPointAt( u )
+  /**
+   * This method samples the curve via {@link Curve#getPointAt} and returns an array of points representing
+   * the curve shape. Unlike {@link Curve#getPoints}, this method returns equi-spaced points across the entire
+   * curve.
+   *
+   * @param {number} [divisions=5] - The number of divisions.
+   * @return {Array<(Vector2|Vector3)>} An array holding the sampled curve values. The number of points is `divisions + 1`.
+   */
+  getSpacedPoints(divisions = 5) {
+    const points = [];
+    for (let d = 0; d <= divisions; d++) {
+      points.push(this.getPointAt(d / divisions));
+    }
+    return points;
+  }
+  /**
+   * Returns the total arc length of the curve.
+   *
+   * @return {number} The length of the curve.
+   */
+  getLength() {
+    const lengths = this.getLengths();
+    return lengths[lengths.length - 1];
+  }
+  /**
+   * Returns an array of cumulative segment lengths of the curve.
+   *
+   * @param {number} [divisions=this.arcLengthDivisions] - The number of divisions.
+   * @return {Array<number>} An array holding the cumulative segment lengths.
+   */
+  getLengths(divisions = this.arcLengthDivisions) {
+    if (this.cacheArcLengths && this.cacheArcLengths.length === divisions + 1 && !this.needsUpdate) {
+      return this.cacheArcLengths;
+    }
+    this.needsUpdate = false;
+    const cache = [];
+    let current, last = this.getPoint(0);
+    let sum = 0;
+    cache.push(0);
+    for (let p = 1; p <= divisions; p++) {
+      current = this.getPoint(p / divisions);
+      sum += current.distanceTo(last);
+      cache.push(sum);
+      last = current;
+    }
+    this.cacheArcLengths = cache;
+    return cache;
+  }
+  /**
+   * Update the cumulative segment distance cache. The method must be called
+   * every time curve parameters are changed. If an updated curve is part of a
+   * composed curve like {@link CurvePath}, this method must be called on the
+   * composed curve, too.
+   */
+  updateArcLengths() {
+    this.needsUpdate = true;
+    this.getLengths();
+  }
+  /**
+   * Given an interpolation factor in the range `[0,1]`, this method returns an updated
+   * interpolation factor in the same range that can be ued to sample equidistant points
+   * from a curve.
+   *
+   * @param {number} u - The interpolation factor.
+   * @param {?number} distance - An optional distance on the curve.
+   * @return {number} The updated interpolation factor.
+   */
+  getUtoTmapping(u, distance = null) {
+    const arcLengths = this.getLengths();
+    let i = 0;
+    const il = arcLengths.length;
+    let targetArcLength;
+    if (distance) {
+      targetArcLength = distance;
+    } else {
+      targetArcLength = u * arcLengths[il - 1];
+    }
+    let low = 0, high = il - 1, comparison;
+    while (low <= high) {
+      i = Math.floor(low + (high - low) / 2);
+      comparison = arcLengths[i] - targetArcLength;
+      if (comparison < 0) {
+        low = i + 1;
+      } else if (comparison > 0) {
+        high = i - 1;
+      } else {
+        high = i;
+        break;
+      }
+    }
+    i = high;
+    if (arcLengths[i] === targetArcLength) {
+      return i / (il - 1);
+    }
+    const lengthBefore = arcLengths[i];
+    const lengthAfter = arcLengths[i + 1];
+    const segmentLength = lengthAfter - lengthBefore;
+    const segmentFraction = (targetArcLength - lengthBefore) / segmentLength;
+    const t = (i + segmentFraction) / (il - 1);
+    return t;
+  }
+  /**
+   * Returns a unit vector tangent for the given interpolation factor.
+   * If the derived curve does not implement its tangent derivation,
+   * two points a small delta apart will be used to find its gradient
+   * which seems to give a reasonable approximation.
+   *
+   * @param {number} t - The interpolation factor.
+   * @param {(Vector2|Vector3)} [optionalTarget] - The optional target vector the result is written to.
+   * @return {(Vector2|Vector3)} The tangent vector.
+   */
+  getTangent(t, optionalTarget) {
+    const delta = 1e-4;
+    let t1 = t - delta;
+    let t2 = t + delta;
+    if (t1 < 0) t1 = 0;
+    if (t2 > 1) t2 = 1;
+    const pt1 = this.getPoint(t1);
+    const pt2 = this.getPoint(t2);
+    const tangent = optionalTarget || (pt1.isVector2 ? new Vector2() : new Vector3());
+    tangent.copy(pt2).sub(pt1).normalize();
+    return tangent;
+  }
+  /**
+   * Same as {@link Curve#getTangent} but with equidistant samples.
+   *
+   * @param {number} u - The interpolation factor.
+   * @param {(Vector2|Vector3)} [optionalTarget] - The optional target vector the result is written to.
+   * @return {(Vector2|Vector3)} The tangent vector.
+   * @see {@link Curve#getPointAt}
+   */
+  getTangentAt(u, optionalTarget) {
+    const t = this.getUtoTmapping(u);
+    return this.getTangent(t, optionalTarget);
+  }
+  /**
+   * Generates the Frenet Frames. Requires a curve definition in 3D space. Used
+   * in geometries like {@link TubeGeometry} or {@link ExtrudeGeometry}.
+   *
+   * @param {number} segments - The number of segments.
+   * @param {boolean} [closed=false] - Whether the curve is closed or not.
+   * @return {{tangents: Array<Vector3>, normals: Array<Vector3>, binormals: Array<Vector3>}} The Frenet Frames.
+   */
+  computeFrenetFrames(segments, closed = false) {
+    const normal = new Vector3();
+    const tangents = [];
+    const normals = [];
+    const binormals = [];
+    const vec = new Vector3();
+    const mat = new Matrix4();
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments;
+      tangents[i] = this.getTangentAt(u, new Vector3());
+    }
+    normals[0] = new Vector3();
+    binormals[0] = new Vector3();
+    let min = Number.MAX_VALUE;
+    const tx = Math.abs(tangents[0].x);
+    const ty = Math.abs(tangents[0].y);
+    const tz = Math.abs(tangents[0].z);
+    if (tx <= min) {
+      min = tx;
+      normal.set(1, 0, 0);
+    }
+    if (ty <= min) {
+      min = ty;
+      normal.set(0, 1, 0);
+    }
+    if (tz <= min) {
+      normal.set(0, 0, 1);
+    }
+    vec.crossVectors(tangents[0], normal).normalize();
+    normals[0].crossVectors(tangents[0], vec);
+    binormals[0].crossVectors(tangents[0], normals[0]);
+    for (let i = 1; i <= segments; i++) {
+      normals[i] = normals[i - 1].clone();
+      binormals[i] = binormals[i - 1].clone();
+      vec.crossVectors(tangents[i - 1], tangents[i]);
+      if (vec.length() > Number.EPSILON) {
+        vec.normalize();
+        const theta = Math.acos(clamp(tangents[i - 1].dot(tangents[i]), -1, 1));
+        normals[i].applyMatrix4(mat.makeRotationAxis(vec, theta));
+      }
+      binormals[i].crossVectors(tangents[i], normals[i]);
+    }
+    if (closed === true) {
+      let theta = Math.acos(clamp(normals[0].dot(normals[segments]), -1, 1));
+      theta /= segments;
+      if (tangents[0].dot(vec.crossVectors(normals[0], normals[segments])) > 0) {
+        theta = -theta;
+      }
+      for (let i = 1; i <= segments; i++) {
+        normals[i].applyMatrix4(mat.makeRotationAxis(tangents[i], theta * i));
+        binormals[i].crossVectors(tangents[i], normals[i]);
+      }
+    }
+    return {
+      tangents,
+      normals,
+      binormals
+    };
+  }
+  /**
+   * Returns a new curve with copied values from this instance.
+   *
+   * @return {Curve} A clone of this instance.
+   */
+  clone() {
+    return new this.constructor().copy(this);
+  }
+  /**
+   * Copies the values of the given curve to this instance.
+   *
+   * @param {Curve} source - The curve to copy.
+   * @return {Curve} A reference to this curve.
+   */
+  copy(source) {
+    this.arcLengthDivisions = source.arcLengthDivisions;
+    return this;
+  }
+  /**
+   * Serializes the curve into JSON.
+   *
+   * @return {Object} A JSON object representing the serialized curve.
+   * @see {@link ObjectLoader#parse}
+   */
+  toJSON() {
+    const data = {
+      metadata: {
+        version: 4.7,
+        type: "Curve",
+        generator: "Curve.toJSON"
+      }
+    };
+    data.arcLengthDivisions = this.arcLengthDivisions;
+    data.type = this.type;
+    return data;
+  }
+  /**
+   * Deserializes the curve from the given JSON.
+   *
+   * @param {Object} json - The JSON holding the serialized curve.
+   * @return {Curve} A reference to this curve.
+   */
+  fromJSON(json) {
+    this.arcLengthDivisions = json.arcLengthDivisions;
+    return this;
+  }
+};
+function CubicPoly() {
+  let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+  function init(x0, x1, t0, t1) {
+    c0 = x0;
+    c1 = t0;
+    c2 = -3 * x0 + 3 * x1 - 2 * t0 - t1;
+    c3 = 2 * x0 - 2 * x1 + t0 + t1;
+  }
+  return {
+    initCatmullRom: function(x0, x1, x2, x3, tension) {
+      init(x1, x2, tension * (x2 - x0), tension * (x3 - x1));
+    },
+    initNonuniformCatmullRom: function(x0, x1, x2, x3, dt0, dt1, dt2) {
+      let t1 = (x1 - x0) / dt0 - (x2 - x0) / (dt0 + dt1) + (x2 - x1) / dt1;
+      let t2 = (x2 - x1) / dt1 - (x3 - x1) / (dt1 + dt2) + (x3 - x2) / dt2;
+      t1 *= dt1;
+      t2 *= dt1;
+      init(x1, x2, t1, t2);
+    },
+    calc: function(t) {
+      const t2 = t * t;
+      const t3 = t2 * t;
+      return c0 + c1 * t + c2 * t2 + c3 * t3;
+    }
+  };
+}
+var tmp = /* @__PURE__ */ new Vector3();
+var tmp2 = /* @__PURE__ */ new Vector3();
+var px = /* @__PURE__ */ new CubicPoly();
+var py = /* @__PURE__ */ new CubicPoly();
+var pz = /* @__PURE__ */ new CubicPoly();
+var CatmullRomCurve3 = class extends Curve {
+  /**
+   * Constructs a new Catmull-Rom curve.
+   *
+   * @param {Array<Vector3>} [points] - An array of 3D points defining the curve.
+   * @param {boolean} [closed=false] - Whether the curve is closed or not.
+   * @param {('centripetal'|'chordal'|'catmullrom')} [curveType='centripetal'] - The curve type.
+   * @param {number} [tension=0.5] - Tension of the curve.
+   */
+  constructor(points = [], closed = false, curveType = "centripetal", tension = 0.5) {
+    super();
+    this.isCatmullRomCurve3 = true;
+    this.type = "CatmullRomCurve3";
+    this.points = points;
+    this.closed = closed;
+    this.curveType = curveType;
+    this.tension = tension;
+  }
+  /**
+   * Returns a point on the curve.
+   *
+   * @param {number} t - A interpolation factor representing a position on the curve. Must be in the range `[0,1]`.
+   * @param {Vector3} [optionalTarget] - The optional target vector the result is written to.
+   * @return {Vector3} The position on the curve.
+   */
+  getPoint(t, optionalTarget = new Vector3()) {
+    const point = optionalTarget;
+    const points = this.points;
+    const l = points.length;
+    const p = (l - (this.closed ? 0 : 1)) * t;
+    let intPoint = Math.floor(p);
+    let weight = p - intPoint;
+    if (this.closed) {
+      intPoint += intPoint > 0 ? 0 : (Math.floor(Math.abs(intPoint) / l) + 1) * l;
+    } else if (weight === 0 && intPoint === l - 1) {
+      intPoint = l - 2;
+      weight = 1;
+    }
+    let p0, p3;
+    if (this.closed || intPoint > 0) {
+      p0 = points[(intPoint - 1) % l];
+    } else {
+      tmp2.subVectors(points[0], points[1]).add(points[0]);
+      p0 = tmp2;
+    }
+    const p1 = points[intPoint % l];
+    const p2 = points[(intPoint + 1) % l];
+    if (this.closed || intPoint + 2 < l) {
+      p3 = points[(intPoint + 2) % l];
+    } else {
+      tmp.subVectors(points[l - 1], points[l - 2]).add(points[l - 1]);
+      p3 = tmp;
+    }
+    if (this.curveType === "centripetal" || this.curveType === "chordal") {
+      const pow = this.curveType === "chordal" ? 0.5 : 0.25;
+      let dt0 = Math.pow(p0.distanceToSquared(p1), pow);
+      let dt1 = Math.pow(p1.distanceToSquared(p2), pow);
+      let dt2 = Math.pow(p2.distanceToSquared(p3), pow);
+      if (dt1 < 1e-4) dt1 = 1;
+      if (dt0 < 1e-4) dt0 = dt1;
+      if (dt2 < 1e-4) dt2 = dt1;
+      px.initNonuniformCatmullRom(p0.x, p1.x, p2.x, p3.x, dt0, dt1, dt2);
+      py.initNonuniformCatmullRom(p0.y, p1.y, p2.y, p3.y, dt0, dt1, dt2);
+      pz.initNonuniformCatmullRom(p0.z, p1.z, p2.z, p3.z, dt0, dt1, dt2);
+    } else if (this.curveType === "catmullrom") {
+      px.initCatmullRom(p0.x, p1.x, p2.x, p3.x, this.tension);
+      py.initCatmullRom(p0.y, p1.y, p2.y, p3.y, this.tension);
+      pz.initCatmullRom(p0.z, p1.z, p2.z, p3.z, this.tension);
+    }
+    point.set(
+      px.calc(weight),
+      py.calc(weight),
+      pz.calc(weight)
+    );
+    return point;
+  }
+  copy(source) {
+    super.copy(source);
+    this.points = [];
+    for (let i = 0, l = source.points.length; i < l; i++) {
+      const point = source.points[i];
+      this.points.push(point.clone());
+    }
+    this.closed = source.closed;
+    this.curveType = source.curveType;
+    this.tension = source.tension;
+    return this;
+  }
+  toJSON() {
+    const data = super.toJSON();
+    data.points = [];
+    for (let i = 0, l = this.points.length; i < l; i++) {
+      const point = this.points[i];
+      data.points.push(point.toArray());
+    }
+    data.closed = this.closed;
+    data.curveType = this.curveType;
+    data.tension = this.tension;
+    return data;
+  }
+  fromJSON(json) {
+    super.fromJSON(json);
+    this.points = [];
+    for (let i = 0, l = json.points.length; i < l; i++) {
+      const point = json.points[i];
+      this.points.push(new Vector3().fromArray(point));
+    }
+    this.closed = json.closed;
+    this.curveType = json.curveType;
+    this.tension = json.tension;
+    return this;
+  }
+};
 var PlaneGeometry = class _PlaneGeometry extends BufferGeometry {
   /**
    * Constructs a new plane geometry.
@@ -13591,9 +14372,9 @@ function cloneUniforms(src) {
 function mergeUniforms(uniforms) {
   const merged = {};
   for (let u = 0; u < uniforms.length; u++) {
-    const tmp = cloneUniforms(uniforms[u]);
-    for (const p in tmp) {
-      merged[p] = tmp[p];
+    const tmp3 = cloneUniforms(uniforms[u]);
+    for (const p in tmp3) {
+      merged[p] = tmp3[p];
     }
   }
   return merged;
@@ -15420,120 +16201,6 @@ var ArrayCamera = class extends PerspectiveCamera {
     this.cameras = array;
   }
 };
-var Timer = class {
-  /**
-   * Constructs a new timer.
-   */
-  constructor() {
-    this._previousTime = 0;
-    this._currentTime = 0;
-    this._startTime = performance.now();
-    this._delta = 0;
-    this._elapsed = 0;
-    this._timescale = 1;
-    this._document = null;
-    this._pageVisibilityHandler = null;
-  }
-  /**
-   * Connect the timer to the given document.Calling this method is not mandatory to
-   * use the timer but enables the usage of the Page Visibility API to avoid large time
-   * delta values.
-   *
-   * @param {Document} document - The document.
-   */
-  connect(document2) {
-    this._document = document2;
-    if (document2.hidden !== void 0) {
-      this._pageVisibilityHandler = handleVisibilityChange.bind(this);
-      document2.addEventListener("visibilitychange", this._pageVisibilityHandler, false);
-    }
-  }
-  /**
-   * Disconnects the timer from the DOM and also disables the usage of the Page Visibility API.
-   */
-  disconnect() {
-    if (this._pageVisibilityHandler !== null) {
-      this._document.removeEventListener("visibilitychange", this._pageVisibilityHandler);
-      this._pageVisibilityHandler = null;
-    }
-    this._document = null;
-  }
-  /**
-   * Returns the time delta in seconds.
-   *
-   * @return {number} The time delta in second.
-   */
-  getDelta() {
-    return this._delta / 1e3;
-  }
-  /**
-   * Returns the elapsed time in seconds.
-   *
-   * @return {number} The elapsed time in second.
-   */
-  getElapsed() {
-    return this._elapsed / 1e3;
-  }
-  /**
-   * Returns the timescale.
-   *
-   * @return {number} The timescale.
-   */
-  getTimescale() {
-    return this._timescale;
-  }
-  /**
-   * Sets the given timescale which scale the time delta computation
-   * in `update()`.
-   *
-   * @param {number} timescale - The timescale to set.
-   * @return {Timer} A reference to this timer.
-   */
-  setTimescale(timescale) {
-    this._timescale = timescale;
-    return this;
-  }
-  /**
-   * Resets the time computation for the current simulation step.
-   *
-   * @return {Timer} A reference to this timer.
-   */
-  reset() {
-    this._currentTime = performance.now() - this._startTime;
-    return this;
-  }
-  /**
-   * Can be used to free all internal resources. Usually called when
-   * the timer instance isn't required anymore.
-   */
-  dispose() {
-    this.disconnect();
-  }
-  /**
-   * Updates the internal state of the timer. This method should be called
-   * once per simulation step and before you perform queries against the timer
-   * (e.g. via `getDelta()`).
-   *
-   * @param {number} timestamp - The current time in milliseconds. Can be obtained
-   * from the `requestAnimationFrame` callback argument. If not provided, the current
-   * time will be determined with `performance.now`.
-   * @return {Timer} A reference to this timer.
-   */
-  update(timestamp) {
-    if (this._pageVisibilityHandler !== null && this._document.hidden === true) {
-      this._delta = 0;
-    } else {
-      this._previousTime = this._currentTime;
-      this._currentTime = (timestamp !== void 0 ? timestamp : performance.now()) - this._startTime;
-      this._delta = (this._currentTime - this._previousTime) * this._timescale;
-      this._elapsed += this._delta;
-    }
-    return this;
-  }
-};
-function handleVisibilityChange() {
-  if (this._document.hidden === false) this.reset();
-}
 var _RESERVED_CHARS_RE = "\\[\\]\\.:\\/";
 var _reservedRe = new RegExp("[" + _RESERVED_CHARS_RE + "]", "g");
 var _wordChar = "[^" + _RESERVED_CHARS_RE + "]";
@@ -15960,69 +16627,145 @@ PropertyBinding.prototype.SetterByBindingTypeAndVersioning = [
   ]
 ];
 var _controlInterpolantsResultBuffer = new Float32Array(1);
-var Clock = class {
+var _matrix = /* @__PURE__ */ new Matrix4();
+var Raycaster = class {
   /**
-   * Constructs a new clock.
+   * Constructs a new raycaster.
    *
-   * @deprecated since 183.
-   * @param {boolean} [autoStart=true] - Whether to automatically start the clock when
-   * `getDelta()` is called for the first time.
+   * @param {Vector3} origin - The origin vector where the ray casts from.
+   * @param {Vector3} direction - The (normalized) direction vector that gives direction to the ray.
+   * @param {number} [near=0] - All results returned are further away than near. Near can't be negative.
+   * @param {number} [far=Infinity] - All results returned are closer than far. Far can't be lower than near.
    */
-  constructor(autoStart = true) {
-    this.autoStart = autoStart;
-    this.startTime = 0;
-    this.oldTime = 0;
-    this.elapsedTime = 0;
-    this.running = false;
-    warn("Clock: This module has been deprecated. Please use THREE.Timer instead.");
+  constructor(origin, direction, near = 0, far = Infinity) {
+    this.ray = new Ray(origin, direction);
+    this.near = near;
+    this.far = far;
+    this.camera = null;
+    this.layers = new Layers();
+    this.params = {
+      Mesh: {},
+      Line: { threshold: 1 },
+      LOD: {},
+      Points: { threshold: 1 },
+      Sprite: {}
+    };
   }
   /**
-   * Starts the clock. When `autoStart` is set to `true`, the method is automatically
-   * called by the class.
-   */
-  start() {
-    this.startTime = performance.now();
-    this.oldTime = this.startTime;
-    this.elapsedTime = 0;
-    this.running = true;
-  }
-  /**
-   * Stops the clock.
-   */
-  stop() {
-    this.getElapsedTime();
-    this.running = false;
-    this.autoStart = false;
-  }
-  /**
-   * Returns the elapsed time in seconds.
+   * Updates the ray with a new origin and direction by copying the values from the arguments.
    *
-   * @return {number} The elapsed time.
+   * @param {Vector3} origin - The origin vector where the ray casts from.
+   * @param {Vector3} direction - The (normalized) direction vector that gives direction to the ray.
    */
-  getElapsedTime() {
-    this.getDelta();
-    return this.elapsedTime;
+  set(origin, direction) {
+    this.ray.set(origin, direction);
   }
   /**
-   * Returns the delta time in seconds.
+   * Uses the given coordinates and camera to compute a new origin and direction for the internal ray.
    *
-   * @return {number} The delta time.
+   * @param {Vector2} coords - 2D coordinates of the mouse, in normalized device coordinates (NDC).
+   * X and Y components should be between `-1` and `1`.
+   * @param {Camera} camera - The camera from which the ray should originate.
    */
-  getDelta() {
-    let diff = 0;
-    if (this.autoStart && !this.running) {
-      this.start();
-      return 0;
+  setFromCamera(coords, camera) {
+    if (camera.isPerspectiveCamera) {
+      this.ray.origin.setFromMatrixPosition(camera.matrixWorld);
+      this.ray.direction.set(coords.x, coords.y, 0.5).unproject(camera).sub(this.ray.origin).normalize();
+      this.camera = camera;
+    } else if (camera.isOrthographicCamera) {
+      this.ray.origin.set(coords.x, coords.y, camera.projectionMatrix.elements[14]).unproject(camera);
+      this.ray.direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
+      this.camera = camera;
+    } else {
+      error("Raycaster: Unsupported camera type: " + camera.type);
     }
-    if (this.running) {
-      const newTime = performance.now();
-      diff = (newTime - this.oldTime) / 1e3;
-      this.oldTime = newTime;
-      this.elapsedTime += diff;
+  }
+  /**
+   * Uses the given WebXR controller to compute a new origin and direction for the internal ray.
+   *
+   * @param {WebXRController} controller - The controller to copy the position and direction from.
+   * @return {Raycaster} A reference to this raycaster.
+   */
+  setFromXRController(controller) {
+    _matrix.identity().extractRotation(controller.matrixWorld);
+    this.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    this.ray.direction.set(0, 0, -1).applyMatrix4(_matrix);
+    return this;
+  }
+  /**
+   * The intersection point of a raycaster intersection test.
+   * @typedef {Object} Raycaster~Intersection
+   * @property {number} distance - The distance from the ray's origin to the intersection point.
+   * @property {number} distanceToRay -  Some 3D objects e.g. {@link Points} provide the distance of the
+   * intersection to the nearest point on the ray. For other objects it will be `undefined`.
+   * @property {Vector3} point - The intersection point, in world coordinates.
+   * @property {Object} face - The face that has been intersected.
+   * @property {number} faceIndex - The face index.
+   * @property {Object3D} object - The 3D object that has been intersected.
+   * @property {Vector2} uv - U,V coordinates at point of intersection.
+   * @property {Vector2} uv1 - Second set of U,V coordinates at point of intersection.
+   * @property {Vector3} normal - Interpolated normal vector at point of intersection.
+   * @property {number} instanceId - The index number of the instance where the ray
+   * intersects the {@link InstancedMesh}.
+   */
+  /**
+   * Checks all intersection between the ray and the object with or without the
+   * descendants. Intersections are returned sorted by distance, closest first.
+   *
+   * `Raycaster` delegates to the `raycast()` method of the passed 3D object, when
+   * evaluating whether the ray intersects the object or not. This allows meshes to respond
+   * differently to ray casting than lines or points.
+   *
+   * Note that for meshes, faces must be pointed towards the origin of the ray in order
+   * to be detected; intersections of the ray passing through the back of a face will not
+   * be detected. To raycast against both faces of an object, you'll want to set  {@link Material#side}
+   * to `THREE.DoubleSide`.
+   *
+   * @param {Object3D} object - The 3D object to check for intersection with the ray.
+   * @param {boolean} [recursive=true] - If set to `true`, it also checks all descendants.
+   * Otherwise it only checks intersection with the object.
+   * @param {Array<Raycaster~Intersection>} [intersects=[]] The target array that holds the result of the method.
+   * @return {Array<Raycaster~Intersection>} An array holding the intersection points.
+   */
+  intersectObject(object, recursive = true, intersects = []) {
+    intersect(object, this, intersects, recursive);
+    intersects.sort(ascSort);
+    return intersects;
+  }
+  /**
+   * Checks all intersection between the ray and the objects with or without
+   * the descendants. Intersections are returned sorted by distance, closest first.
+   *
+   * @param {Array<Object3D>} objects - The 3D objects to check for intersection with the ray.
+   * @param {boolean} [recursive=true] - If set to `true`, it also checks all descendants.
+   * Otherwise it only checks intersection with the object.
+   * @param {Array<Raycaster~Intersection>} [intersects=[]] The target array that holds the result of the method.
+   * @return {Array<Raycaster~Intersection>} An array holding the intersection points.
+   */
+  intersectObjects(objects, recursive = true, intersects = []) {
+    for (let i = 0, l = objects.length; i < l; i++) {
+      intersect(objects[i], this, intersects, recursive);
     }
-    return diff;
+    intersects.sort(ascSort);
+    return intersects;
   }
 };
+function ascSort(a, b) {
+  return a.distance - b.distance;
+}
+function intersect(object, raycaster, intersects, recursive) {
+  let propagate = true;
+  if (object.layers.test(raycaster.layers)) {
+    const result = object.raycast(raycaster, intersects);
+    if (result === false) propagate = false;
+  }
+  if (propagate === true && recursive === true) {
+    const children = object.children;
+    for (let i = 0, l = children.length; i < l; i++) {
+      intersect(children[i], raycaster, intersects, true);
+    }
+  }
+}
 var _Matrix2 = class _Matrix2 {
   /**
    * Constructs a new 2x2 matrix. The arguments are supposed to be
@@ -27672,1854 +28415,719 @@ var WebGLRenderer = class {
   }
 };
 
-// node_modules/three/examples/jsm/shaders/CopyShader.js
-var CopyShader = {
-  name: "CopyShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "opacity": { value: 1 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		uniform float opacity;
-
-		uniform sampler2D tDiffuse;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vec4 texel = texture2D( tDiffuse, vUv );
-			gl_FragColor = opacity * texel;
-
-
-		}`
-  )
-};
-
-// node_modules/three/examples/jsm/postprocessing/Pass.js
-var Pass = class {
-  /**
-   * Constructs a new pass.
-   */
-  constructor() {
-    this.isPass = true;
-    this.enabled = true;
-    this.needsSwap = true;
-    this.clear = false;
-    this.renderToScreen = false;
-  }
-  /**
-   * Sets the size of the pass.
-   *
-   * @abstract
-   * @param {number} width - The width to set.
-   * @param {number} height - The height to set.
-   */
-  setSize() {
-  }
-  /**
-   * This method holds the render logic of a pass. It must be implemented in all derived classes.
-   *
-   * @abstract
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render() {
-    console.error("THREE.Pass: .render() must be implemented in derived pass.");
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   *
-   * @abstract
-   */
-  dispose() {
-  }
-};
-var _camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-var FullscreenTriangleGeometry = class extends BufferGeometry {
-  constructor() {
-    super();
-    this.setAttribute("position", new Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
-    this.setAttribute("uv", new Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2));
-  }
-};
-var _geometry2 = new FullscreenTriangleGeometry();
-var FullScreenQuad = class {
-  /**
-   * Constructs a new full screen quad.
-   *
-   * @param {?Material} material - The material to render te full screen quad with.
-   */
-  constructor(material) {
-    this._mesh = new Mesh(_geometry2, material);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the instance is no longer used in your app.
-   */
-  dispose() {
-    this._mesh.geometry.dispose();
-  }
-  /**
-   * Renders the full screen quad.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   */
-  render(renderer) {
-    renderer.render(this._mesh, _camera);
-  }
-  /**
-   * The quad's material.
-   *
-   * @type {?Material}
-   */
-  get material() {
-    return this._mesh.material;
-  }
-  set material(value) {
-    this._mesh.material = value;
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/ShaderPass.js
-var ShaderPass = class extends Pass {
-  /**
-   * Constructs a new shader pass.
-   *
-   * @param {Object|ShaderMaterial} [shader] - A shader object holding vertex and fragment shader as well as
-   * defines and uniforms. It's also valid to pass a custom shader material.
-   * @param {string} [textureID='tDiffuse'] - The name of the texture uniform that should sample
-   * the read buffer.
-   */
-  constructor(shader, textureID = "tDiffuse") {
-    super();
-    this.textureID = textureID;
-    this.uniforms = null;
-    this.material = null;
-    if (shader instanceof ShaderMaterial) {
-      this.uniforms = shader.uniforms;
-      this.material = shader;
-    } else if (shader) {
-      this.uniforms = UniformsUtils.clone(shader.uniforms);
-      this.material = new ShaderMaterial({
-        name: shader.name !== void 0 ? shader.name : "unspecified",
-        defines: Object.assign({}, shader.defines),
-        uniforms: this.uniforms,
-        vertexShader: shader.vertexShader,
-        fragmentShader: shader.fragmentShader
-      });
-    }
-    this._fsQuad = new FullScreenQuad(this.material);
-  }
-  /**
-   * Performs the shader pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    if (this.uniforms[this.textureID]) {
-      this.uniforms[this.textureID].value = readBuffer.texture;
-    }
-    this._fsQuad.material = this.material;
-    if (this.renderToScreen) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(writeBuffer);
-      if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-      this._fsQuad.render(renderer);
-    }
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    this.material.dispose();
-    this._fsQuad.dispose();
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/MaskPass.js
-var MaskPass = class extends Pass {
-  /**
-   * Constructs a new mask pass.
-   *
-   * @param {Scene} scene - The 3D objects in this scene will define the mask.
-   * @param {Camera} camera - The camera.
-   */
-  constructor(scene, camera) {
-    super();
-    this.scene = scene;
-    this.camera = camera;
-    this.clear = true;
-    this.needsSwap = false;
-    this.inverse = false;
-  }
-  /**
-   * Performs a mask pass with the configured scene and camera.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    const context = renderer.getContext();
-    const state = renderer.state;
-    state.buffers.color.setMask(false);
-    state.buffers.depth.setMask(false);
-    state.buffers.color.setLocked(true);
-    state.buffers.depth.setLocked(true);
-    let writeValue, clearValue;
-    if (this.inverse) {
-      writeValue = 0;
-      clearValue = 1;
-    } else {
-      writeValue = 1;
-      clearValue = 0;
-    }
-    state.buffers.stencil.setTest(true);
-    state.buffers.stencil.setOp(context.REPLACE, context.REPLACE, context.REPLACE);
-    state.buffers.stencil.setFunc(context.ALWAYS, writeValue, 4294967295);
-    state.buffers.stencil.setClear(clearValue);
-    state.buffers.stencil.setLocked(true);
-    renderer.setRenderTarget(readBuffer);
-    if (this.clear) renderer.clear();
-    renderer.render(this.scene, this.camera);
-    renderer.setRenderTarget(writeBuffer);
-    if (this.clear) renderer.clear();
-    renderer.render(this.scene, this.camera);
-    state.buffers.color.setLocked(false);
-    state.buffers.depth.setLocked(false);
-    state.buffers.color.setMask(true);
-    state.buffers.depth.setMask(true);
-    state.buffers.stencil.setLocked(false);
-    state.buffers.stencil.setFunc(context.EQUAL, 1, 4294967295);
-    state.buffers.stencil.setOp(context.KEEP, context.KEEP, context.KEEP);
-    state.buffers.stencil.setLocked(true);
-  }
-};
-var ClearMaskPass = class extends Pass {
-  /**
-   * Constructs a new clear mask pass.
-   */
-  constructor() {
-    super();
-    this.needsSwap = false;
-  }
-  /**
-   * Performs the clear of the currently defined mask.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer) {
-    renderer.state.buffers.stencil.setLocked(false);
-    renderer.state.buffers.stencil.setTest(false);
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/EffectComposer.js
-var EffectComposer = class {
-  /**
-   * Constructs a new effect composer.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} [renderTarget] - This render target and a clone will
-   * be used as the internal read and write buffers. If not given, the composer creates
-   * the buffers automatically.
-   */
-  constructor(renderer, renderTarget) {
-    this.renderer = renderer;
-    this._pixelRatio = renderer.getPixelRatio();
-    if (renderTarget === void 0) {
-      const size = renderer.getSize(new Vector2());
-      this._width = size.width;
-      this._height = size.height;
-      renderTarget = new WebGLRenderTarget(this._width * this._pixelRatio, this._height * this._pixelRatio, { type: HalfFloatType });
-      renderTarget.texture.name = "EffectComposer.rt1";
-    } else {
-      this._width = renderTarget.width;
-      this._height = renderTarget.height;
-    }
-    this.renderTarget1 = renderTarget;
-    this.renderTarget2 = renderTarget.clone();
-    this.renderTarget2.texture.name = "EffectComposer.rt2";
-    this.writeBuffer = this.renderTarget1;
-    this.readBuffer = this.renderTarget2;
-    this.renderToScreen = true;
-    this.passes = [];
-    this.copyPass = new ShaderPass(CopyShader);
-    this.copyPass.material.blending = NoBlending;
-    this.timer = new Timer();
-  }
-  /**
-   * Swaps the internal read/write buffers.
-   */
-  swapBuffers() {
-    const tmp = this.readBuffer;
-    this.readBuffer = this.writeBuffer;
-    this.writeBuffer = tmp;
-  }
-  /**
-   * Adds the given pass to the pass chain.
-   *
-   * @param {Pass} pass - The pass to add.
-   */
-  addPass(pass) {
-    this.passes.push(pass);
-    pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-  }
-  /**
-   * Inserts the given pass at a given index.
-   *
-   * @param {Pass} pass - The pass to insert.
-   * @param {number} index - The index into the pass chain.
-   */
-  insertPass(pass, index) {
-    this.passes.splice(index, 0, pass);
-    pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-  }
-  /**
-   * Removes the given pass from the pass chain.
-   *
-   * @param {Pass} pass - The pass to remove.
-   */
-  removePass(pass) {
-    const index = this.passes.indexOf(pass);
-    if (index !== -1) {
-      this.passes.splice(index, 1);
-    }
-  }
-  /**
-   * Returns `true` if the pass for the given index is the last enabled pass in the pass chain.
-   *
-   * @param {number} passIndex - The pass index.
-   * @return {boolean} Whether the pass for the given index is the last pass in the pass chain.
-   */
-  isLastEnabledPass(passIndex) {
-    for (let i = passIndex + 1; i < this.passes.length; i++) {
-      if (this.passes[i].enabled) {
-        return false;
-      }
-    }
-    return true;
-  }
-  /**
-   * Executes all enabled post-processing passes in order to produce the final frame.
-   *
-   * @param {number} deltaTime - The delta time in seconds. If not given, the composer computes
-   * its own time delta value.
-   */
-  render(deltaTime) {
-    this.timer.update();
-    if (deltaTime === void 0) {
-      deltaTime = this.timer.getDelta();
-    }
-    const currentRenderTarget = this.renderer.getRenderTarget();
-    let maskActive = false;
-    for (let i = 0, il = this.passes.length; i < il; i++) {
-      const pass = this.passes[i];
-      if (pass.enabled === false) continue;
-      pass.renderToScreen = this.renderToScreen && this.isLastEnabledPass(i);
-      pass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime, maskActive);
-      if (pass.needsSwap) {
-        if (maskActive) {
-          const context = this.renderer.getContext();
-          const stencil = this.renderer.state.buffers.stencil;
-          stencil.setFunc(context.NOTEQUAL, 1, 4294967295);
-          this.copyPass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime);
-          stencil.setFunc(context.EQUAL, 1, 4294967295);
-        }
-        this.swapBuffers();
-      }
-      if (MaskPass !== void 0) {
-        if (pass instanceof MaskPass) {
-          maskActive = true;
-        } else if (pass instanceof ClearMaskPass) {
-          maskActive = false;
-        }
-      }
-    }
-    this.renderer.setRenderTarget(currentRenderTarget);
-  }
-  /**
-   * Resets the internal state of the EffectComposer.
-   *
-   * @param {WebGLRenderTarget} [renderTarget] - This render target has the same purpose like
-   * the one from the constructor. If set, it is used to setup the read and write buffers.
-   */
-  reset(renderTarget) {
-    if (renderTarget === void 0) {
-      const size = this.renderer.getSize(new Vector2());
-      this._pixelRatio = this.renderer.getPixelRatio();
-      this._width = size.width;
-      this._height = size.height;
-      renderTarget = this.renderTarget1.clone();
-      renderTarget.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-    }
-    this.renderTarget1.dispose();
-    this.renderTarget2.dispose();
-    this.renderTarget1 = renderTarget;
-    this.renderTarget2 = renderTarget.clone();
-    this.writeBuffer = this.renderTarget1;
-    this.readBuffer = this.renderTarget2;
-  }
-  /**
-   * Resizes the internal read and write buffers as well as all passes. Similar to {@link WebGLRenderer#setSize},
-   * this method honors the current pixel ration.
-   *
-   * @param {number} width - The width in logical pixels.
-   * @param {number} height - The height in logical pixels.
-   */
-  setSize(width, height) {
-    this._width = width;
-    this._height = height;
-    const effectiveWidth = this._width * this._pixelRatio;
-    const effectiveHeight = this._height * this._pixelRatio;
-    this.renderTarget1.setSize(effectiveWidth, effectiveHeight);
-    this.renderTarget2.setSize(effectiveWidth, effectiveHeight);
-    for (let i = 0; i < this.passes.length; i++) {
-      this.passes[i].setSize(effectiveWidth, effectiveHeight);
-    }
-  }
-  /**
-   * Sets device pixel ratio. This is usually used for HiDPI device to prevent blurring output.
-   * Setting the pixel ratio will automatically resize the composer.
-   *
-   * @param {number} pixelRatio - The pixel ratio to set.
-   */
-  setPixelRatio(pixelRatio) {
-    this._pixelRatio = pixelRatio;
-    this.setSize(this._width, this._height);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the composer is no longer used in your app.
-   */
-  dispose() {
-    this.renderTarget1.dispose();
-    this.renderTarget2.dispose();
-    this.copyPass.dispose();
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/RenderPass.js
-var RenderPass = class extends Pass {
-  /**
-   * Constructs a new render pass.
-   *
-   * @param {Scene} scene - The scene to render.
-   * @param {Camera} camera - The camera.
-   * @param {?Material} [overrideMaterial=null] - The override material. If set, this material is used
-   * for all objects in the scene.
-   * @param {?(number|Color|string)} [clearColor=null] - The clear color of the render pass.
-   * @param {?number} [clearAlpha=null] - The clear alpha of the render pass.
-   */
-  constructor(scene, camera, overrideMaterial = null, clearColor = null, clearAlpha = null) {
-    super();
-    this.scene = scene;
-    this.camera = camera;
-    this.overrideMaterial = overrideMaterial;
-    this.clearColor = clearColor;
-    this.clearAlpha = clearAlpha;
-    this.clear = true;
-    this.clearDepth = false;
-    this.needsSwap = false;
-    this.isRenderPass = true;
-    this._oldClearColor = new Color();
-  }
-  /**
-   * Performs a beauty pass with the configured scene and camera.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    const oldAutoClear = renderer.autoClear;
-    renderer.autoClear = false;
-    let oldClearAlpha, oldOverrideMaterial;
-    if (this.overrideMaterial !== null) {
-      oldOverrideMaterial = this.scene.overrideMaterial;
-      this.scene.overrideMaterial = this.overrideMaterial;
-    }
-    if (this.clearColor !== null) {
-      renderer.getClearColor(this._oldClearColor);
-      renderer.setClearColor(this.clearColor, renderer.getClearAlpha());
-    }
-    if (this.clearAlpha !== null) {
-      oldClearAlpha = renderer.getClearAlpha();
-      renderer.setClearAlpha(this.clearAlpha);
-    }
-    if (this.clearDepth == true) {
-      renderer.clearDepth();
-    }
-    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
-    if (this.clear === true) {
-      renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-    }
-    renderer.render(this.scene, this.camera);
-    if (this.clearColor !== null) {
-      renderer.setClearColor(this._oldClearColor);
-    }
-    if (this.clearAlpha !== null) {
-      renderer.setClearAlpha(oldClearAlpha);
-    }
-    if (this.overrideMaterial !== null) {
-      this.scene.overrideMaterial = oldOverrideMaterial;
-    }
-    renderer.autoClear = oldAutoClear;
-  }
-};
-
-// node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js
-var LuminosityHighPassShader = {
-  name: "LuminosityHighPassShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "luminosityThreshold": { value: 1 },
-    "smoothWidth": { value: 1 },
-    "defaultColor": { value: new Color(0) },
-    "defaultOpacity": { value: 0 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		uniform sampler2D tDiffuse;
-		uniform vec3 defaultColor;
-		uniform float defaultOpacity;
-		uniform float luminosityThreshold;
-		uniform float smoothWidth;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vec4 texel = texture2D( tDiffuse, vUv );
-
-			float v = luminance( texel.xyz );
-
-			vec4 outputColor = vec4( defaultColor.rgb, defaultOpacity );
-
-			float alpha = smoothstep( luminosityThreshold, luminosityThreshold + smoothWidth, v );
-
-			gl_FragColor = mix( outputColor, texel, alpha );
-
-		}`
-  )
-};
-
-// node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js
-var UnrealBloomPass = class _UnrealBloomPass extends Pass {
-  /**
-   * Constructs a new Unreal Bloom pass.
-   *
-   * @param {Vector2} [resolution] - The effect's resolution.
-   * @param {number} [strength=1] - The Bloom strength.
-   * @param {number} radius - The Bloom radius.
-   * @param {number} threshold - The luminance threshold limits which bright areas contribute to the Bloom effect.
-   */
-  constructor(resolution, strength = 1, radius, threshold) {
-    super();
-    this.strength = strength;
-    this.radius = radius;
-    this.threshold = threshold;
-    this.resolution = resolution !== void 0 ? new Vector2(resolution.x, resolution.y) : new Vector2(256, 256);
-    this.clearColor = new Color(0, 0, 0);
-    this.needsSwap = false;
-    this.renderTargetsHorizontal = [];
-    this.renderTargetsVertical = [];
-    this.nMips = 5;
-    let resx = Math.round(this.resolution.x / 2);
-    let resy = Math.round(this.resolution.y / 2);
-    this.renderTargetBright = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-    this.renderTargetBright.texture.name = "UnrealBloomPass.bright";
-    this.renderTargetBright.texture.generateMipmaps = false;
-    for (let i = 0; i < this.nMips; i++) {
-      const renderTargetHorizontal = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-      renderTargetHorizontal.texture.name = "UnrealBloomPass.h" + i;
-      renderTargetHorizontal.texture.generateMipmaps = false;
-      this.renderTargetsHorizontal.push(renderTargetHorizontal);
-      const renderTargetVertical = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-      renderTargetVertical.texture.name = "UnrealBloomPass.v" + i;
-      renderTargetVertical.texture.generateMipmaps = false;
-      this.renderTargetsVertical.push(renderTargetVertical);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-    const highPassShader = LuminosityHighPassShader;
-    this.highPassUniforms = UniformsUtils.clone(highPassShader.uniforms);
-    this.highPassUniforms["luminosityThreshold"].value = threshold;
-    this.highPassUniforms["smoothWidth"].value = 0.01;
-    this.materialHighPassFilter = new ShaderMaterial({
-      uniforms: this.highPassUniforms,
-      vertexShader: highPassShader.vertexShader,
-      fragmentShader: highPassShader.fragmentShader
-    });
-    this.separableBlurMaterials = [];
-    const kernelSizeArray = [6, 10, 14, 18, 22];
-    resx = Math.round(this.resolution.x / 2);
-    resy = Math.round(this.resolution.y / 2);
-    for (let i = 0; i < this.nMips; i++) {
-      this.separableBlurMaterials.push(this._getSeparableBlurMaterial(kernelSizeArray[i]));
-      this.separableBlurMaterials[i].uniforms["invSize"].value = new Vector2(1 / resx, 1 / resy);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-    this.compositeMaterial = this._getCompositeMaterial(this.nMips);
-    this.compositeMaterial.uniforms["blurTexture1"].value = this.renderTargetsVertical[0].texture;
-    this.compositeMaterial.uniforms["blurTexture2"].value = this.renderTargetsVertical[1].texture;
-    this.compositeMaterial.uniforms["blurTexture3"].value = this.renderTargetsVertical[2].texture;
-    this.compositeMaterial.uniforms["blurTexture4"].value = this.renderTargetsVertical[3].texture;
-    this.compositeMaterial.uniforms["blurTexture5"].value = this.renderTargetsVertical[4].texture;
-    this.compositeMaterial.uniforms["bloomStrength"].value = strength;
-    this.compositeMaterial.uniforms["bloomRadius"].value = 0.1;
-    const bloomFactors = [1, 0.8, 0.6, 0.4, 0.2];
-    this.compositeMaterial.uniforms["bloomFactors"].value = bloomFactors;
-    this.bloomTintColors = [new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1)];
-    this.compositeMaterial.uniforms["bloomTintColors"].value = this.bloomTintColors;
-    this.copyUniforms = UniformsUtils.clone(CopyShader.uniforms);
-    this.blendMaterial = new ShaderMaterial({
-      uniforms: this.copyUniforms,
-      vertexShader: CopyShader.vertexShader,
-      fragmentShader: CopyShader.fragmentShader,
-      premultipliedAlpha: true,
-      blending: AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      transparent: true
-    });
-    this._oldClearColor = new Color();
-    this._oldClearAlpha = 1;
-    this._basic = new MeshBasicMaterial();
-    this._fsQuad = new FullScreenQuad(null);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    for (let i = 0; i < this.renderTargetsHorizontal.length; i++) {
-      this.renderTargetsHorizontal[i].dispose();
-    }
-    for (let i = 0; i < this.renderTargetsVertical.length; i++) {
-      this.renderTargetsVertical[i].dispose();
-    }
-    this.renderTargetBright.dispose();
-    for (let i = 0; i < this.separableBlurMaterials.length; i++) {
-      this.separableBlurMaterials[i].dispose();
-    }
-    this.compositeMaterial.dispose();
-    this.blendMaterial.dispose();
-    this._basic.dispose();
-    this._fsQuad.dispose();
-  }
-  /**
-   * Sets the size of the pass.
-   *
-   * @param {number} width - The width to set.
-   * @param {number} height - The height to set.
-   */
-  setSize(width, height) {
-    let resx = Math.round(width / 2);
-    let resy = Math.round(height / 2);
-    this.renderTargetBright.setSize(resx, resy);
-    for (let i = 0; i < this.nMips; i++) {
-      this.renderTargetsHorizontal[i].setSize(resx, resy);
-      this.renderTargetsVertical[i].setSize(resx, resy);
-      this.separableBlurMaterials[i].uniforms["invSize"].value = new Vector2(1 / resx, 1 / resy);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-  }
-  /**
-   * Performs the Bloom pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
-    renderer.getClearColor(this._oldClearColor);
-    this._oldClearAlpha = renderer.getClearAlpha();
-    const oldAutoClear = renderer.autoClear;
-    renderer.autoClear = false;
-    renderer.setClearColor(this.clearColor, 0);
-    if (maskActive) renderer.state.buffers.stencil.setTest(false);
-    if (this.renderToScreen) {
-      this._fsQuad.material = this._basic;
-      this._basic.map = readBuffer.texture;
-      renderer.setRenderTarget(null);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-    }
-    this.highPassUniforms["tDiffuse"].value = readBuffer.texture;
-    this.highPassUniforms["luminosityThreshold"].value = this.threshold;
-    this._fsQuad.material = this.materialHighPassFilter;
-    renderer.setRenderTarget(this.renderTargetBright);
-    renderer.clear();
-    this._fsQuad.render(renderer);
-    let inputRenderTarget = this.renderTargetBright;
-    for (let i = 0; i < this.nMips; i++) {
-      this._fsQuad.material = this.separableBlurMaterials[i];
-      this.separableBlurMaterials[i].uniforms["colorTexture"].value = inputRenderTarget.texture;
-      this.separableBlurMaterials[i].uniforms["direction"].value = _UnrealBloomPass.BlurDirectionX;
-      renderer.setRenderTarget(this.renderTargetsHorizontal[i]);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-      this.separableBlurMaterials[i].uniforms["colorTexture"].value = this.renderTargetsHorizontal[i].texture;
-      this.separableBlurMaterials[i].uniforms["direction"].value = _UnrealBloomPass.BlurDirectionY;
-      renderer.setRenderTarget(this.renderTargetsVertical[i]);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-      inputRenderTarget = this.renderTargetsVertical[i];
-    }
-    this._fsQuad.material = this.compositeMaterial;
-    this.compositeMaterial.uniforms["bloomStrength"].value = this.strength;
-    this.compositeMaterial.uniforms["bloomRadius"].value = this.radius;
-    this.compositeMaterial.uniforms["bloomTintColors"].value = this.bloomTintColors;
-    renderer.setRenderTarget(this.renderTargetsHorizontal[0]);
-    renderer.clear();
-    this._fsQuad.render(renderer);
-    this._fsQuad.material = this.blendMaterial;
-    this.copyUniforms["tDiffuse"].value = this.renderTargetsHorizontal[0].texture;
-    if (maskActive) renderer.state.buffers.stencil.setTest(true);
-    if (this.renderToScreen) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(readBuffer);
-      this._fsQuad.render(renderer);
-    }
-    renderer.setClearColor(this._oldClearColor, this._oldClearAlpha);
-    renderer.autoClear = oldAutoClear;
-  }
-  // internals
-  _getSeparableBlurMaterial(kernelRadius) {
-    const coefficients = [];
-    const sigma = kernelRadius / 3;
-    for (let i = 0; i < kernelRadius; i++) {
-      coefficients.push(0.39894 * Math.exp(-0.5 * i * i / (sigma * sigma)) / sigma);
-    }
-    return new ShaderMaterial({
-      defines: {
-        "KERNEL_RADIUS": kernelRadius
-      },
-      uniforms: {
-        "colorTexture": { value: null },
-        "invSize": { value: new Vector2(0.5, 0.5) },
-        // inverse texture size
-        "direction": { value: new Vector2(0.5, 0.5) },
-        "gaussianCoefficients": { value: coefficients }
-        // precomputed Gaussian coefficients
-      },
-      vertexShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				void main() {
-
-					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-				}`
-      ),
-      fragmentShader: (
-        /* glsl */
-        `
-
-				#include <common>
-
-				varying vec2 vUv;
-
-				uniform sampler2D colorTexture;
-				uniform vec2 invSize;
-				uniform vec2 direction;
-				uniform float gaussianCoefficients[KERNEL_RADIUS];
-
-				void main() {
-
-					float weightSum = gaussianCoefficients[0];
-					vec3 diffuseSum = texture2D( colorTexture, vUv ).rgb * weightSum;
-
-					for ( int i = 1; i < KERNEL_RADIUS; i ++ ) {
-
-						float x = float( i );
-						float w = gaussianCoefficients[i];
-						vec2 uvOffset = direction * invSize * x;
-						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset ).rgb;
-						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset ).rgb;
-						diffuseSum += ( sample1 + sample2 ) * w;
-
-					}
-
-					gl_FragColor = vec4( diffuseSum, 1.0 );
-
-				}`
-      )
-    });
-  }
-  _getCompositeMaterial(nMips) {
-    return new ShaderMaterial({
-      defines: {
-        "NUM_MIPS": nMips
-      },
-      uniforms: {
-        "blurTexture1": { value: null },
-        "blurTexture2": { value: null },
-        "blurTexture3": { value: null },
-        "blurTexture4": { value: null },
-        "blurTexture5": { value: null },
-        "bloomStrength": { value: 1 },
-        "bloomFactors": { value: null },
-        "bloomTintColors": { value: null },
-        "bloomRadius": { value: 0 }
-      },
-      vertexShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				void main() {
-
-					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-				}`
-      ),
-      fragmentShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				uniform sampler2D blurTexture1;
-				uniform sampler2D blurTexture2;
-				uniform sampler2D blurTexture3;
-				uniform sampler2D blurTexture4;
-				uniform sampler2D blurTexture5;
-				uniform float bloomStrength;
-				uniform float bloomRadius;
-				uniform float bloomFactors[NUM_MIPS];
-				uniform vec3 bloomTintColors[NUM_MIPS];
-
-				float lerpBloomFactor( const in float factor ) {
-
-					float mirrorFactor = 1.2 - factor;
-					return mix( factor, mirrorFactor, bloomRadius );
-
-				}
-
-				void main() {
-
-					// 3.0 for backwards compatibility with previous alpha-based intensity
-					vec3 bloom = 3.0 * bloomStrength * (
-						lerpBloomFactor( bloomFactors[ 0 ] ) * bloomTintColors[ 0 ] * texture2D( blurTexture1, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 1 ] ) * bloomTintColors[ 1 ] * texture2D( blurTexture2, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 2 ] ) * bloomTintColors[ 2 ] * texture2D( blurTexture3, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 3 ] ) * bloomTintColors[ 3 ] * texture2D( blurTexture4, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 4 ] ) * bloomTintColors[ 4 ] * texture2D( blurTexture5, vUv ).rgb
-					);
-
-					float bloomAlpha = max( bloom.r, max( bloom.g, bloom.b ) );
-					gl_FragColor = vec4( bloom, bloomAlpha );
-
-				}`
-      )
-    });
-  }
-};
-UnrealBloomPass.BlurDirectionX = new Vector2(1, 0);
-UnrealBloomPass.BlurDirectionY = new Vector2(0, 1);
-
-// node_modules/three/examples/jsm/shaders/OutputShader.js
-var OutputShader = {
-  name: "OutputShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "toneMappingExposure": { value: 1 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-		precision highp float;
-
-		uniform mat4 modelViewMatrix;
-		uniform mat4 projectionMatrix;
-
-		attribute vec3 position;
-		attribute vec2 uv;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		precision highp float;
-
-		uniform sampler2D tDiffuse;
-
-		#include <tonemapping_pars_fragment>
-		#include <colorspace_pars_fragment>
-
-		varying vec2 vUv;
-
-		void main() {
-
-			gl_FragColor = texture2D( tDiffuse, vUv );
-
-			// tone mapping
-
-			#ifdef LINEAR_TONE_MAPPING
-
-				gl_FragColor.rgb = LinearToneMapping( gl_FragColor.rgb );
-
-			#elif defined( REINHARD_TONE_MAPPING )
-
-				gl_FragColor.rgb = ReinhardToneMapping( gl_FragColor.rgb );
-
-			#elif defined( CINEON_TONE_MAPPING )
-
-				gl_FragColor.rgb = CineonToneMapping( gl_FragColor.rgb );
-
-			#elif defined( ACES_FILMIC_TONE_MAPPING )
-
-				gl_FragColor.rgb = ACESFilmicToneMapping( gl_FragColor.rgb );
-
-			#elif defined( AGX_TONE_MAPPING )
-
-				gl_FragColor.rgb = AgXToneMapping( gl_FragColor.rgb );
-
-			#elif defined( NEUTRAL_TONE_MAPPING )
-
-				gl_FragColor.rgb = NeutralToneMapping( gl_FragColor.rgb );
-
-			#elif defined( CUSTOM_TONE_MAPPING )
-
-				gl_FragColor.rgb = CustomToneMapping( gl_FragColor.rgb );
-
-			#endif
-
-			// color space
-
-			#ifdef SRGB_TRANSFER
-
-				gl_FragColor = sRGBTransferOETF( gl_FragColor );
-
-			#endif
-
-		}`
-  )
-};
-
-// node_modules/three/examples/jsm/postprocessing/OutputPass.js
-var OutputPass = class extends Pass {
-  /**
-   * Constructs a new output pass.
-   */
-  constructor() {
-    super();
-    this.isOutputPass = true;
-    this.uniforms = UniformsUtils.clone(OutputShader.uniforms);
-    this.material = new RawShaderMaterial({
-      name: OutputShader.name,
-      uniforms: this.uniforms,
-      vertexShader: OutputShader.vertexShader,
-      fragmentShader: OutputShader.fragmentShader
-    });
-    this._fsQuad = new FullScreenQuad(this.material);
-    this._outputColorSpace = null;
-    this._toneMapping = null;
-  }
-  /**
-   * Performs the output pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    this.uniforms["tDiffuse"].value = readBuffer.texture;
-    this.uniforms["toneMappingExposure"].value = renderer.toneMappingExposure;
-    if (this._outputColorSpace !== renderer.outputColorSpace || this._toneMapping !== renderer.toneMapping) {
-      this._outputColorSpace = renderer.outputColorSpace;
-      this._toneMapping = renderer.toneMapping;
-      this.material.defines = {};
-      if (ColorManagement.getTransfer(this._outputColorSpace) === SRGBTransfer) this.material.defines.SRGB_TRANSFER = "";
-      if (this._toneMapping === LinearToneMapping) this.material.defines.LINEAR_TONE_MAPPING = "";
-      else if (this._toneMapping === ReinhardToneMapping) this.material.defines.REINHARD_TONE_MAPPING = "";
-      else if (this._toneMapping === CineonToneMapping) this.material.defines.CINEON_TONE_MAPPING = "";
-      else if (this._toneMapping === ACESFilmicToneMapping) this.material.defines.ACES_FILMIC_TONE_MAPPING = "";
-      else if (this._toneMapping === AgXToneMapping) this.material.defines.AGX_TONE_MAPPING = "";
-      else if (this._toneMapping === NeutralToneMapping) this.material.defines.NEUTRAL_TONE_MAPPING = "";
-      else if (this._toneMapping === CustomToneMapping) this.material.defines.CUSTOM_TONE_MAPPING = "";
-      this.material.needsUpdate = true;
-    }
-    if (this.renderToScreen === true) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(writeBuffer);
-      if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-      this._fsQuad.render(renderer);
-    }
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    this.material.dispose();
-    this._fsQuad.dispose();
-  }
-};
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/types.ts
-var EMPTY_AUDIO = {
+// effects/04-thread-veil/src/lib/stellar/types.ts
+var SILENT_AUDIO = Object.freeze({
   amplitude: 0,
-  bass: 0,
-  mid: 0,
-  high: 0,
-  beat: 0,
-  drone: 0
-};
+  frequency: 0,
+  brightness: 0,
+  energy: 0,
+  beat: 0
+});
+
+// effects/04-thread-veil/src/lib/stellar/params.ts
 var DEFAULT_PARAMS = {
-  particleCount: 44e3,
-  particleSize: 2,
-  rotationSpeed: 0.05,
-  gravityStrength: 1,
-  flowStrength: 1,
-  brightness: 0.95,
-  bloomStrength: 0.7,
-  audioReactivity: 1,
-  pointerInfluence: 1,
-  afterglowSeconds: 2.6,
-  // #7ED8B0 bio-green core
-  coreColor: [0.494, 0.847, 0.69],
-  // #E8F0E0 cool-white dust
-  dustColor: [0.909, 0.941, 0.878]
+  density: 1,
+  glow: 1,
+  rotationSpeed: 0.02,
+  parallax: 1,
+  veilOpacity: 1,
+  accentColor: "#E9C67C",
+  // gold — core & stars
+  coolColor: "#A0B6D0",
+  // cold blue — orbit rings
+  inkColor: "#F4F6F9"
+  // high-contrast white — particles / threads
 };
+function resolveParams(overrides) {
+  return { ...DEFAULT_PARAMS, ...overrides ?? {} };
+}
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/audio-mapping.ts
-var AudioReactiveMapping = class {
+// effects/04-thread-veil/src/lib/stellar/audio-engine.ts
+var AudioEngine = class {
   constructor() {
-    this.growth = 0;
+    this.ctx = null;
+    this.master = null;
   }
-  reset() {
-    this.growth = 0;
-  }
-  /**
-   * @param audio   current six-channel audio (0..1 each)
-   * @param params  live engine parameters
-   * @param charge  interaction charge 0..1 (hold builds it, release decays it)
-   * @param dt      delta seconds
-   */
-  compute(audio, params, charge, dt) {
-    const a = audio ?? EMPTY_AUDIO;
-    const r = params.audioReactivity;
-    const target = a.drone * r;
-    this.growth += (target - this.growth) * Math.min(1, dt * 0.6);
-    const amp = a.amplitude * r;
-    const bass = a.bass * r;
-    const mid = a.mid * r;
-    const high = a.high * r;
-    const beat = a.beat * r;
-    return {
-      brightness: params.brightness * (0.72 + amp * 0.9 + charge * 0.4),
-      coreScale: 1 + bass * 0.6 + charge * 0.5 + this.growth * 0.25 + beat * 0.18,
-      spin: params.rotationSpeed * (1 + this.growth * 1.6 + mid * 0.5 + charge * 0.4),
-      flow: params.flowStrength * (0.8 + mid * 1.1 + charge * 0.3),
-      gravity: params.gravityStrength * (0.85 + bass * 0.8 + charge * 1.1),
-      sparkle: Math.min(1, high * 1.2 + beat * 0.3),
-      ring: Math.min(1, beat + charge * 0.15),
-      growth: this.growth,
-      bloom: params.bloomStrength * (0.85 + amp * 0.5 + charge * 0.35)
-    };
-  }
-};
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/shaders.ts
-var PARTICLE_VERTEX = (
-  /* glsl */
-  `
-precision highp float;
-
-attribute float aSeed;      // per-particle random 0..1
-attribute float aRadius;    // rest distance from core
-attribute float aSpin;      // per-particle angular offset
-
-uniform float uTime;
-uniform float uSpin;        // accumulated rotation angle
-uniform float uGravity;     // pull toward core
-uniform float uFlow;        // curl-noise intensity
-uniform float uCoreScale;   // core expansion
-uniform float uGrowth;      // sustained growth 0..1
-uniform float uPointer;     // pointer influence strength
-uniform vec3  uPointerPos;  // pointer position in world space
-uniform float uSize;        // base point size
-uniform float uSparkle;     // high-freq flicker 0..1
-uniform float uHeight;      // vertical thickness of the nebula (audio-driven)
-uniform float uPulse;       // bass/beat-driven radial swell 0..1
-uniform float uPixelRatio;
-
-varying float vRadius;
-varying float vGlow;
-varying float vSeed;
-
-// --- simplex-ish 3D noise (Ashima) ---
-vec4 permute(vec4 x){ return mod(((x*34.0)+1.0)*x, 289.0); }
-vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
-float snoise(vec3 v){
-  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-  vec3 i  = floor(v + dot(v, C.yyy));
-  vec3 x0 = v - i + dot(i, C.xxx);
-  vec3 g = step(x0.yzx, x0.xyz);
-  vec3 l = 1.0 - g;
-  vec3 i1 = min(g.xyz, l.zxy);
-  vec3 i2 = max(g.xyz, l.zxy);
-  vec3 x1 = x0 - i1 + C.xxx;
-  vec3 x2 = x0 - i2 + C.yyy;
-  vec3 x3 = x0 - D.yyy;
-  i = mod(i, 289.0);
-  vec4 p = permute(permute(permute(
-      i.z + vec4(0.0, i1.z, i2.z, 1.0))
-    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-  float n_ = 1.0/7.0;
-  vec3 ns = n_ * D.wyz - D.xzx;
-  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_);
-  vec4 x = x_ * ns.x + ns.yyyy;
-  vec4 y = y_ * ns.x + ns.yyyy;
-  vec4 h = 1.0 - abs(x) - abs(y);
-  vec4 b0 = vec4(x.xy, y.xy);
-  vec4 b1 = vec4(x.zw, y.zw);
-  vec4 s0 = floor(b0)*2.0 + 1.0;
-  vec4 s1 = floor(b1)*2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-  vec3 p0 = vec3(a0.xy, h.x);
-  vec3 p1 = vec3(a0.zw, h.y);
-  vec3 p2 = vec3(a1.xy, h.z);
-  vec3 p3 = vec3(a1.zw, h.w);
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-
-vec3 curl(vec3 p){
-  float e = 0.35;
-  float n1 = snoise(p + vec3(0.0, e, 0.0));
-  float n2 = snoise(p - vec3(0.0, e, 0.0));
-  float n3 = snoise(p + vec3(0.0, 0.0, e));
-  float n4 = snoise(p - vec3(0.0, 0.0, e));
-  float n5 = snoise(p + vec3(e, 0.0, 0.0));
-  float n6 = snoise(p - vec3(e, 0.0, 0.0));
-  float x = (n1 - n2) - (n3 - n4);
-  float y = (n3 - n4) - (n5 - n6);
-  float z = (n5 - n6) - (n1 - n2);
-  return normalize(vec3(x, y, z) + 1e-5);
-}
-
-void main(){
-  vSeed = aSeed;
-
-  // Rest position on a disc-shell around the core. Radius swells with the
-  // audio pulse so the whole nebula breathes/expands with the music.
-  float ang = aSpin + uSpin * (0.4 + aSeed * 0.9);
-  float rad = aRadius * (1.0 + uGrowth * 0.5 + uPulse * 0.35);
-  // uHeight raises the nebula: taller vertical spread, also modulated by audio.
-  float yThick = rad * uHeight * (0.7 + snoise(vec3(aSeed * 12.0, uTime * 0.2, 0.0)) * 0.4);
-  vec3 base = vec3(cos(ang) * rad, (aSeed - 0.5) * yThick, sin(ang) * rad);
-
-  // Audio-driven vertical undulation \u2014 the cloud rolls with bass/drone.
-  base.y += sin(ang * 2.0 + uTime * 0.8 + aSeed * 6.28) * uPulse * rad * 0.18;
-
-  // Curl-noise flow drift.
-  vec3 flow = curl(base * 0.12 + vec3(uTime * 0.04, uTime * 0.03, aSeed * 4.0));
-  base += flow * uFlow * (0.6 + aSeed);
-
-  // Gravitational pull toward core (stronger when close).
-  float dist = length(base) + 1e-3;
-  vec3 dir = base / dist;
-  float pull = uGravity * (1.2 / (dist * 0.5 + 1.0));
-  base -= dir * pull * 0.4;
-
-  // Core expansion pushes shells outward on bass/charge.
-  base += dir * (uCoreScale - 1.0) * rad * 0.4;
-
-  // Pointer local disturbance.
-  vec3 toPointer = base - uPointerPos;
-  float pd = length(toPointer);
-  float infl = uPointer * exp(-pd * 0.35) * 2.0;
-  base += normalize(toPointer + 1e-4) * infl;
-
-  vRadius = clamp(dist / 40.0, 0.0, 1.0);
-  // Glow rises toward the core, but the innermost region is pushed DARK so a
-  // constellation can sit at the center without being washed out by dust.
-  float outerGlow = 1.0 - clamp(dist / 54.0, 0.0, 1.0);
-  float centerDim = smoothstep(3.0, 12.0, dist); // 0 at center \u2192 1 outside core
-  vGlow = outerGlow * centerDim;
-
-  vec4 mv = modelViewMatrix * vec4(base, 1.0);
-  float sizeFlicker = 1.0 + uSparkle * (snoise(vec3(aSeed * 30.0, uTime * 6.0, 0.0)) * 0.5);
-  gl_PointSize = uSize * uPixelRatio * sizeFlicker * (1.0 + vGlow * 1.4) * (60.0 / -mv.z);
-  gl_Position = projectionMatrix * mv;
-}
-`
-);
-var PARTICLE_FRAGMENT = (
-  /* glsl */
-  `
-precision highp float;
-
-uniform vec3  uCoreColor;
-uniform vec3  uDustColor;
-uniform float uBrightness;
-uniform float uSparkle;
-
-varying float vRadius;
-varying float vGlow;
-varying float vSeed;
-
-void main(){
-  vec2 uv = gl_PointCoord - 0.5;
-  float d = length(uv);
-  if (d > 0.5) discard;
-
-  // Soft additive falloff \u2014 a glowing dot with a bright core.
-  float alpha = smoothstep(0.5, 0.0, d);
-  float core = smoothstep(0.28, 0.0, d);
-
-  // Tint from bio-green core (near center) to cool-white dust (outer).
-  vec3 col = mix(uCoreColor, uDustColor, smoothstep(0.15, 0.85, vRadius));
-  col += core * 0.35;
-
-  // Occasional bright sparkle on high frequencies.
-  float twinkle = step(0.94, fract(vSeed * 91.7 + uSparkle));
-  col += twinkle * uSparkle * 0.6;
-
-  float intensity = (alpha * 0.3 + core * 0.65) * (0.2 + vGlow * 0.7) * uBrightness;
-  gl_FragColor = vec4(col * intensity, alpha * intensity);
-}
-`
-);
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/particle-system.ts
-var ParticleSystem = class {
-  constructor(params, pixelRatio) {
-    this.spinAccum = 0;
-    const count = params.particleCount;
-    const seeds = new Float32Array(count);
-    const radii = new Float32Array(count);
-    const spins = new Float32Array(count);
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const seed = Math.random();
-      const r = 3 + Math.pow(Math.random(), 0.8) * 40;
-      const ang = Math.random() * Math.PI * 2;
-      seeds[i] = seed;
-      radii[i] = r;
-      spins[i] = ang;
-      positions[i * 3] = Math.cos(ang) * r;
-      positions[i * 3 + 1] = (seed - 0.5) * r * 0.55;
-      positions[i * 3 + 2] = Math.sin(ang) * r;
+  /** Lazily create the context on first user gesture (autoplay policy). */
+  ensure() {
+    if (!this.ctx) {
+      const Ctor = window.AudioContext ?? window.webkitAudioContext;
+      this.ctx = new Ctor();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
     }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    geometry.setAttribute("aSeed", new BufferAttribute(seeds, 1));
-    geometry.setAttribute("aRadius", new BufferAttribute(radii, 1));
-    geometry.setAttribute("aSpin", new BufferAttribute(spins, 1));
-    this.geometry = geometry;
-    this.material = new ShaderMaterial({
-      vertexShader: PARTICLE_VERTEX,
-      fragmentShader: PARTICLE_FRAGMENT,
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uSpin: { value: 0 },
-        uGravity: { value: params.gravityStrength },
-        uFlow: { value: params.flowStrength },
-        uCoreScale: { value: 1 },
-        uGrowth: { value: 0 },
-        uPointer: { value: 0 },
-        uPointerPos: { value: new Vector3() },
-        uSize: { value: params.particleSize },
-        uSparkle: { value: 0 },
-        uHeight: { value: 0.9 },
-        uPulse: { value: 0 },
-        uBrightness: { value: params.brightness },
-        uPixelRatio: { value: pixelRatio },
-        uCoreColor: { value: new Vector3(...params.coreColor) },
-        uDustColor: { value: new Vector3(...params.dustColor) }
-      }
-    });
-    this.points = new Points(geometry, this.material);
-    this.points.frustumCulled = false;
+    void this.ctx.resume();
+    return this.ctx;
   }
-  setPixelRatio(pr) {
-    this.material.uniforms.uPixelRatio.value = pr;
-  }
-  applyParams(params) {
-    const u = this.material.uniforms;
-    u.uSize.value = params.particleSize;
-    u.uCoreColor.value.set(...params.coreColor);
-    u.uDustColor.value.set(...params.dustColor);
-  }
-  update(dt, time, drive, pointer, pointerStrength) {
-    const u = this.material.uniforms;
-    this.spinAccum += drive.spin * dt;
-    u.uTime.value = time;
-    u.uSpin.value = this.spinAccum;
-    u.uGravity.value = drive.gravity;
-    u.uFlow.value = drive.flow;
-    u.uCoreScale.value = drive.coreScale;
-    u.uGrowth.value = drive.growth;
-    u.uSparkle.value = drive.sparkle;
-    const pulse = Math.min(1, (drive.coreScale - 1) * 1.2 + drive.ring * 0.5);
-    u.uPulse.value = pulse;
-    u.uHeight.value = 0.9 + drive.growth * 0.5 + pulse * 0.4;
-    u.uBrightness.value = drive.brightness;
-    u.uPointer.value = pointerStrength;
-    u.uPointerPos.value.copy(pointer);
+  /** Play one star tone. Returns the fundamental for feature feedback. */
+  play({ frequency, timbre, hold }) {
+    const ctx = this.ensure();
+    const master = this.master;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    const shimmer = ctx.createOscillator();
+    const shimmerGain = ctx.createGain();
+    osc.type = timbre;
+    osc.frequency.setValueAtTime(frequency, now);
+    osc.frequency.exponentialRampToValueAtTime(frequency * 1.5, now + 0.18);
+    shimmer.type = "sine";
+    shimmer.frequency.setValueAtTime(frequency * 2, now);
+    shimmerGain.gain.setValueAtTime(0.04, now);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(1800, now);
+    filter.frequency.exponentialRampToValueAtTime(900, now + 0.4);
+    const rel = hold ? 0.9 : 0.48;
+    gain.gain.setValueAtTime(1e-4, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(1e-4, now + (hold ? 0.8 : 0.42));
+    osc.connect(filter).connect(gain).connect(master);
+    shimmer.connect(shimmerGain).connect(gain);
+    osc.start(now);
+    shimmer.start(now);
+    osc.stop(now + rel);
+    shimmer.stop(now + rel);
+    return frequency;
   }
   dispose() {
-    this.geometry.dispose();
-    this.material.dispose();
+    void this.ctx?.close();
+    this.ctx = null;
+    this.master = null;
   }
 };
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/interaction-controller.ts
-var InteractionController = class {
+// effects/04-thread-veil/src/lib/stellar/audio-features.ts
+var SyntheticAudioSource = class {
   constructor() {
-    this.state = {
-      pointer: { x: 0, y: 0 },
-      smoothPointer: { x: 0, y: 0 },
-      charge: 0,
-      isDown: false,
-      tapImpulse: 0,
-      lastTap: { x: 0, y: 0 }
+    this.t = 0;
+    this.beatEnv = 0;
+    this.lastFreq = 392;
+    this.ampEnv = 0;
+  }
+  /** Called by the engine when a star fires, to spike the signal. */
+  trigger(frequency) {
+    this.beatEnv = 1;
+    this.ampEnv = 1;
+    this.lastFreq = frequency;
+  }
+  update(dt) {
+    this.t += dt;
+    this.beatEnv *= Math.pow(0.02, dt);
+    this.ampEnv *= Math.pow(0.28, dt);
+  }
+  read() {
+    const breath = 0.5 + 0.5 * Math.sin(this.t * 0.9);
+    const amplitude = Math.min(1, 0.12 + breath * 0.14 + this.ampEnv * 0.74);
+    const energy = Math.min(1, 0.1 + breath * 0.18 + this.ampEnv * 0.6);
+    const brightness = Math.min(1, 0.3 + this.lastFreq / 1400 + this.beatEnv * 0.3);
+    return {
+      amplitude,
+      frequency: this.lastFreq,
+      brightness,
+      energy,
+      beat: this.beatEnv
     };
-    this.el = null;
-    this.downTime = 0;
+  }
+};
+
+// effects/04-thread-veil/src/lib/stellar/interaction.ts
+var HOLD_THRESHOLD_MS = 320;
+var TAP_MOVE_TOLERANCE = 6;
+var InteractionManager = class {
+  constructor(el) {
+    this.el = el;
+    this.downAt = 0;
+    this.downX = 0;
+    this.downY = 0;
+    this.moved = false;
     this.holdFired = false;
     this.holdTimer = null;
-    this.listeners = /* @__PURE__ */ new Set();
-    this.afterglowSeconds = 2.6;
-    this.HOLD_MS = 260;
-    this.handleDown = (e) => {
-      const p = this.toNDC(e);
-      this.state.pointer = p;
-      this.state.isDown = true;
-      this.downTime = performance.now();
+    this.pointerId = null;
+    this.handlers = /* @__PURE__ */ new Set();
+    this.onDown = (ev) => {
+      this.pointerId = ev.pointerId;
+      this.downAt = performance.now();
+      this.downX = ev.clientX;
+      this.downY = ev.clientY;
+      this.moved = false;
       this.holdFired = false;
-      this.emit("press", p);
+      this.el.setPointerCapture?.(ev.pointerId);
+      this.emit("press", ev);
       this.holdTimer = window.setTimeout(() => {
-        if (this.state.isDown) {
+        if (!this.moved) {
           this.holdFired = true;
-          this.emit("hold", p);
+          this.emit("hold", ev);
         }
-      }, this.HOLD_MS);
+      }, HOLD_THRESHOLD_MS);
     };
-    this.handleMove = (e) => {
-      this.state.pointer = this.toNDC(e);
-    };
-    this.handleLeaveMove = () => {
-    };
-    this.handleUp = (e) => {
-      if (!this.state.isDown) return;
-      const p = this.toNDC(e);
-      const held = performance.now() - this.downTime;
-      if (this.holdTimer) window.clearTimeout(this.holdTimer);
-      this.state.isDown = false;
-      if (held < this.HOLD_MS && !this.holdFired) {
-        this.state.tapImpulse = 1;
-        this.state.lastTap = p;
-        this.emit("tap", p);
+    this.onMove = (ev) => {
+      if (this.pointerId !== null && Math.hypot(ev.clientX - this.downX, ev.clientY - this.downY) > TAP_MOVE_TOLERANCE) {
+        this.moved = true;
+        this.emit("drag", ev);
+      } else {
+        this.emit("move", ev);
       }
-      this.holdFired = false;
-      this.emit("release", p);
+    };
+    this.onUp = (ev) => {
+      if (this.holdTimer !== null) {
+        clearTimeout(this.holdTimer);
+        this.holdTimer = null;
+      }
+      if (!this.moved && !this.holdFired && performance.now() - this.downAt < HOLD_THRESHOLD_MS) {
+        this.emit("tap", ev);
+      }
+      this.emit("release", ev);
+      this.pointerId = null;
     };
   }
-  onGesture(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+  on(handler) {
+    this.handlers.add(handler);
+    return () => this.handlers.delete(handler);
   }
-  setAfterglowSeconds(s) {
-    this.afterglowSeconds = Math.max(0.2, s);
+  emit(phase, ev) {
+    const rect = this.el.getBoundingClientRect();
+    const nx = (ev.clientX - rect.left) / rect.width * 2 - 1;
+    const ny = -((ev.clientY - rect.top) / rect.height * 2 - 1);
+    const evt = {
+      phase,
+      ndc: { x: nx, y: ny },
+      client: { x: ev.clientX, y: ev.clientY },
+      heldMs: phase === "hold" ? performance.now() - this.downAt : 0
+    };
+    this.handlers.forEach((h) => h(evt));
   }
-  attach(el) {
-    this.detach();
-    this.el = el;
-    el.addEventListener("pointerdown", this.handleDown);
-    el.addEventListener("pointermove", this.handleMove);
-    window.addEventListener("pointerup", this.handleUp);
-    window.addEventListener("pointercancel", this.handleUp);
-    el.addEventListener("pointerleave", this.handleLeaveMove);
+  attach() {
+    this.el.addEventListener("pointerdown", this.onDown);
+    this.el.addEventListener("pointermove", this.onMove);
+    window.addEventListener("pointerup", this.onUp);
   }
   detach() {
-    if (!this.el) return;
-    this.el.removeEventListener("pointerdown", this.handleDown);
-    this.el.removeEventListener("pointermove", this.handleMove);
-    window.removeEventListener("pointerup", this.handleUp);
-    window.removeEventListener("pointercancel", this.handleUp);
-    this.el.removeEventListener("pointerleave", this.handleLeaveMove);
-    if (this.holdTimer) window.clearTimeout(this.holdTimer);
-    this.el = null;
-  }
-  /** Advance charge & impulse envelopes. Call once per frame. */
-  update(dt) {
-    const s = this.state;
-    s.smoothPointer.x += (s.pointer.x - s.smoothPointer.x) * Math.min(1, dt * 6);
-    s.smoothPointer.y += (s.pointer.y - s.smoothPointer.y) * Math.min(1, dt * 6);
-    if (s.isDown && this.holdFired) {
-      s.charge = Math.min(1, s.charge + dt * 0.9);
-    } else {
-      const decay = 1 / this.afterglowSeconds;
-      s.charge = Math.max(0, s.charge - dt * decay);
-    }
-    s.tapImpulse = Math.max(0, s.tapImpulse - dt * 2.4);
-  }
-  // ---- Public gesture API (for programmatic / host-driven interaction) ----
-  tap(point = { x: 0, y: 0 }) {
-    this.state.tapImpulse = 1;
-    this.state.lastTap = point;
-    this.emit("tap", point);
-  }
-  press(point = { x: 0, y: 0 }) {
-    this.state.isDown = true;
-    this.emit("press", point);
-  }
-  hold(point = { x: 0, y: 0 }) {
-    this.holdFired = true;
-    this.emit("hold", point);
-  }
-  release(point = { x: 0, y: 0 }) {
-    this.state.isDown = false;
-    this.holdFired = false;
-    this.emit("release", point);
-  }
-  emit(kind, point) {
-    this.listeners.forEach((fn) => fn(kind, point));
-  }
-  // ---- DOM handlers ----
-  toNDC(e) {
-    const el = this.el;
-    if (!el) return { x: 0, y: 0 };
-    const rect = el.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / rect.width * 2 - 1,
-      y: -((e.clientY - rect.top) / rect.height * 2 - 1)
-    };
+    this.el.removeEventListener("pointerdown", this.onDown);
+    this.el.removeEventListener("pointermove", this.onMove);
+    window.removeEventListener("pointerup", this.onUp);
+    if (this.holdTimer !== null) clearTimeout(this.holdTimer);
+    this.handlers.clear();
   }
 };
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/gravitational-core.ts
-var RIPPLE_LAYERS = 4;
-var RIPPLE_LIFE = 1.8;
-var GravitationalCore = class {
-  constructor(params) {
-    this.group = new Group();
-    this.rings = [];
-    this.ripples = [];
-    this.pendingPulse = 0;
-    this.coreColor = new Color(...params.coreColor);
-    this.coreMat = new SpriteMaterial({
-      map: makeHaloTexture(),
-      color: this.coreColor,
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      opacity: 0.22
-    });
-    this.coreSprite = new Sprite(this.coreMat);
-    this.coreSprite.scale.setScalar(7);
-    this.group.add(this.coreSprite);
-    this.ellipseGeo = makeEllipseGeometry(1, 0.62, 160);
-    const r1 = this.makeRing(14, 0.16);
-    const r2 = this.makeRing(9, 0.12);
-    this.rings.push(r1, r2);
-    this.group.add(r1, r2);
+// effects/04-thread-veil/src/lib/stellar/textures.ts
+function softCircleTexture() {
+  const s = 96;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const g = c.getContext("2d");
+  const r = s / 2;
+  const grad = g.createRadialGradient(r, r, 0, r, r, r);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.28, "rgba(255,255,255,.72)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
+  const t = new CanvasTexture(c);
+  t.needsUpdate = true;
+  return t;
+}
+
+// effects/04-thread-veil/src/lib/stellar/modules/particles.ts
+var ParticlesModule = class {
+  constructor(count = 3200) {
+    this.name = "particles";
+    this.count = count;
   }
-  makeRing(radius, opacity) {
-    const mat = new LineBasicMaterial({
-      color: this.coreColor,
-      transparent: true,
-      opacity,
-      depthWrite: false,
-      blending: AdditiveBlending
-    });
-    const line = new Line(this.ellipseGeo, mat);
-    line.scale.setScalar(radius);
-    line.rotation.x = -Math.PI * 0.5;
-    return line;
-  }
-  applyParams(params) {
-    this.coreColor.set(...params.coreColor);
-    this.coreMat.color.copy(this.coreColor);
-    this.rings.forEach(
-      (r) => r.material.color.copy(this.coreColor)
-    );
-  }
-  /** Trigger a ripple (called by tap / strong beats). */
-  pulse(strength) {
-    this.pendingPulse = Math.max(this.pendingPulse, strength);
-  }
-  update(dt, t, drive, tapImpulse) {
-    const scale = 7 * (1 + drive.coreScale * 0.06) * (1 + Math.sin(t * 1.2) * 0.03);
-    this.coreSprite.scale.setScalar(scale);
-    this.coreMat.opacity = Math.min(0.3, 0.14 + drive.brightness * 0.1);
-    this.rings[0].rotation.z += drive.spin * dt * 0.8;
-    this.rings[1].rotation.z -= drive.spin * dt * 1.1;
-    this.rings.forEach((r) => {
-      const m = r.material;
-      m.opacity = 0.1 + drive.growth * 0.16;
-    });
-    if (drive.ring > 0.55 || this.pendingPulse > 0 || tapImpulse > 0.6) {
-      this.spawnRipple(Math.max(drive.ring, this.pendingPulse, tapImpulse));
-      this.pendingPulse = 0;
+  mount(group) {
+    const pos = new Float32Array(this.count * 3);
+    const seed = new Float32Array(this.count);
+    this.dir = new Float32Array(this.count * 3);
+    for (let i = 0; i < this.count; i++) {
+      const side = Math.random() < 0.55 ? -1 : 1;
+      const t = Math.random();
+      const baseX = side * (1.05 + 2.4 * t);
+      const y = -1.45 + Math.sin(t * Math.PI) * 2.75 + (Math.random() - 0.5) * 0.42;
+      const x = baseX + (Math.random() - 0.5) * 0.7;
+      const z = (Math.random() - 0.5) * 1.4;
+      pos[i * 3] = x;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = z;
+      seed[i] = Math.random() * Math.PI * 2;
+      const dx = x;
+      const dy = y - 0.05;
+      const dz = z - 0.55;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      this.dir[i * 3] = dx / len;
+      this.dir[i * 3 + 1] = dy / len;
+      this.dir[i * 3 + 2] = dz / len;
     }
-    for (let i = this.ripples.length - 1; i >= 0; i--) {
-      const rip = this.ripples[i];
-      rip.life -= dt;
-      const p = 1 - rip.life / RIPPLE_LIFE;
-      const eased = 1 - Math.pow(1 - p, 2.2);
-      rip.lines.forEach((line, layer) => {
-        const layerP = Math.max(0, eased - layer * 0.09);
-        const scale2 = 2 + layerP * 64;
-        line.scale.setScalar(scale2);
-        rip.mats[layer].opacity = Math.max(0, (1 - p) * (1 - layer * 0.16)) * 0.5 * rip.strength;
-      });
-      if (rip.life <= 0) {
-        rip.lines.forEach((line, layer) => {
-          this.group.remove(line);
-          rip.mats[layer].dispose();
+    this.base = pos.slice();
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(pos, 3));
+    geo.setAttribute("seed", new BufferAttribute(seed, 1));
+    this.material = new PointsMaterial({
+      size: 0.018,
+      map: softCircleTexture(),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      color: new Color("#F4F6F9"),
+      opacity: 0.62
+    });
+    this.points = new Points(geo, this.material);
+    group.add(this.points);
+  }
+  update(ctx) {
+    const { time, params, impulse, audio } = ctx;
+    this.material.color.set(params.inkColor);
+    this.points.rotation.z = time * 0.018;
+    this.points.position.x = ctx.pointer.x * 0.28 * params.parallax;
+    const blast = impulse * (0.9 + audio.beat * 0.6);
+    const arr = this.points.geometry.attributes.position.array;
+    for (let i = 0; i < this.count; i++) {
+      const k = i * 3;
+      const push = blast * (0.35 + this.base[k + 1] % 1 * 0.4);
+      arr[k] = this.base[k] + this.dir[k] * push;
+      arr[k + 1] = this.base[k + 1] + this.dir[k + 1] * push;
+      arr[k + 2] = this.base[k + 2] + this.dir[k + 2] * push;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    this.material.size = (0.018 + impulse * 0.03) * params.density;
+    const base = 0.52 * params.density;
+    this.material.opacity = base + impulse * 0.34 + audio.energy * 0.16;
+  }
+  dispose() {
+    this.points.geometry.dispose();
+    this.material.map?.dispose();
+    this.material.dispose();
+    this.points.parent?.remove(this.points);
+  }
+};
+
+// effects/04-thread-veil/src/lib/stellar/modules/lines.ts
+var LinesModule = class {
+  constructor(threadsPerVeil = 40, layers = 3) {
+    this.name = "lines";
+    this.group = new Group();
+    this.threads = [];
+    this.threadsPerVeil = threadsPerVeil;
+    this.layers = layers;
+  }
+  makeVeil(side) {
+    const anchorX = side * 3.15;
+    const footX = side * 1.45;
+    for (let layer = 0; layer < this.layers; layer++) {
+      const zBase = -0.15 - layer * 0.85;
+      const spread = 1 + layer * 0.18;
+      const layerDim = 1 - layer * 0.22;
+      for (let i = 0; i < this.threadsPerVeil; i++) {
+        const u = i / (this.threadsPerVeil - 1);
+        const bottomX = MathUtils.lerp(footX, side * 3.6 * spread, u);
+        const curve = new CatmullRomCurve3([
+          new Vector3(anchorX * (1 + layer * 0.04), 1.35, zBase + 0.25),
+          new Vector3(
+            side * (2.6 - 1.1 * u) * spread,
+            0.3 + Math.sin(u * Math.PI) * 0.5,
+            zBase + Math.sin(u * Math.PI) * 0.9 - 0.2
+          ),
+          new Vector3(bottomX, -1.85, zBase + (u - 0.5) * 0.7)
+        ]);
+        const pts = curve.getPoints(30);
+        const geo = new BufferGeometry().setFromPoints(pts);
+        const baseOpacity = (0.09 + Math.random() * 0.2) * layerDim;
+        const mat = new LineBasicMaterial({
+          color: new Color("#F4F6F9"),
+          transparent: true,
+          opacity: baseOpacity,
+          blending: AdditiveBlending
         });
-        this.ripples.splice(i, 1);
+        const line = new Line(geo, mat);
+        this.threads.push({
+          line,
+          base: pts.map((p) => p.clone()),
+          seed: Math.random() * 8,
+          layer,
+          u,
+          baseOpacity
+        });
+        this.group.add(line);
       }
     }
   }
-  spawnRipple(strength) {
-    if (this.ripples.length > 5) return;
-    const lines = [];
-    const mats = [];
-    for (let layer = 0; layer < RIPPLE_LAYERS; layer++) {
-      const mat = new LineBasicMaterial({
-        // Cool white ellipse outlines (not the green core color).
-        color: 15922928,
-        transparent: true,
-        opacity: 0,
-        depthWrite: false,
-        blending: AdditiveBlending
-      });
-      const line = new Line(this.ellipseGeo, mat);
-      line.rotation.x = -Math.PI * 0.5;
-      line.scale.setScalar(1.2);
-      this.group.add(line);
-      lines.push(line);
-      mats.push(mat);
+  mount(root) {
+    this.makeVeil(-1);
+    this.makeVeil(1);
+    root.add(this.group);
+  }
+  update(ctx) {
+    const { time, params, impulse, audio } = ctx;
+    const surge = impulse * impulse * 0.34 + impulse * 0.12 + audio.amplitude * 0.08 + audio.beat * 0.14;
+    for (const thread of this.threads) {
+      const { line, base, seed, layer, u, baseOpacity } = thread;
+      const arr = line.geometry.attributes.position.array;
+      const layerFalloff = 1 - layer * 0.28;
+      const amp = (0.02 * params.veilOpacity + surge) * layerFalloff;
+      const wave = impulse * Math.sin(time * 9 - u * 7 + seed) * 0.5;
+      for (let i = 0; i < base.length; i++) {
+        const along = i / (base.length - 1);
+        const env = Math.sin(along * Math.PI);
+        arr[i * 3] = base[i].x + (Math.sin(time * 2.4 + i * 0.55 + seed) * amp + wave * amp * 4) * env;
+        arr[i * 3 + 1] = base[i].y + Math.cos(time * 1.9 + i * 0.45 + seed) * amp * 0.7 * env;
+        arr[i * 3 + 2] = base[i].z + Math.sin(time * 1.6 + i * 0.4 + seed) * amp * 0.6 * env;
+      }
+      line.geometry.attributes.position.needsUpdate = true;
+      const mat = line.material;
+      mat.color.set(params.inkColor);
+      mat.opacity = baseOpacity * params.veilOpacity + impulse * 0.22 * layerFalloff + audio.beat * 0.08;
     }
-    this.ripples.push({ lines, mats, life: RIPPLE_LIFE, strength });
   }
   dispose() {
+    this.threads.forEach(({ line }) => {
+      line.geometry.dispose();
+      line.material.dispose();
+    });
+    this.threads = [];
+    this.group.parent?.remove(this.group);
+  }
+};
+
+// effects/04-thread-veil/src/lib/stellar/modules/rings.ts
+var RingsModule = class {
+  constructor() {
+    this.name = "rings";
+    this.group = new Group();
+    this.materials = [];
+  }
+  mount(root) {
+    for (let r = 0.55; r < 3.7; r += 0.42) {
+      const pts = [];
+      for (let i = 0; i <= 160; i++) {
+        const a = i / 160 * Math.PI * 2;
+        pts.push(new Vector3(Math.cos(a) * r, Math.sin(a) * r * 0.42, -0.35));
+      }
+      const mat = new LineBasicMaterial({
+        color: new Color("#A0B6D0"),
+        transparent: true,
+        opacity: 0.13
+      });
+      this.materials.push(mat);
+      this.group.add(new Line(new BufferGeometry().setFromPoints(pts), mat));
+    }
+    root.add(this.group);
+  }
+  update(ctx) {
+    this.group.rotation.z = ctx.time * 0.01;
+    const flash = ctx.audio.beat * 0.1;
+    this.materials.forEach((m) => {
+      m.color.set(ctx.params.coolColor);
+      m.opacity = 0.13 * ctx.params.veilOpacity + flash;
+    });
+  }
+  dispose() {
+    this.group.children.forEach((c) => {
+      const line = c;
+      line.geometry.dispose();
+      line.material.dispose();
+    });
+    this.materials = [];
+    this.group.parent?.remove(this.group);
+  }
+};
+
+// effects/04-thread-veil/src/lib/stellar/modules/stars.ts
+var StarsModule = class {
+  constructor(stars) {
+    this.stars = stars;
+    this.name = "stars";
+  }
+  /** Exposed so the engine's raycaster can hit-test against these points. */
+  get object() {
+    return this.points;
+  }
+  mount(group) {
+    const geo = new BufferGeometry().setFromPoints(
+      this.stars.map((s) => s.position)
+    );
+    this.material = new PointsMaterial({
+      size: 0.18,
+      map: softCircleTexture(),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      color: new Color("#E9C67C"),
+      opacity: 1
+    });
+    this.points = new Points(geo, this.material);
+    group.add(this.points);
+  }
+  update(ctx) {
+    const { params, impulse, audio } = ctx;
+    this.material.color.set(params.accentColor);
+    this.material.size = 0.18 * params.glow + impulse * 0.16 + audio.amplitude * 0.12;
+  }
+  dispose() {
+    this.points.geometry.dispose();
+    this.material.map?.dispose();
+    this.material.dispose();
+    this.points.parent?.remove(this.points);
+  }
+};
+
+// effects/04-thread-veil/src/lib/stellar/scene.ts
+var VEIL_STARS = [
+  { id: "core", label: "\u6838\u661F", position: new Vector3(0, 0.05, 0.55), frequency: 392, timbre: "sine" },
+  { id: "left", label: "\u5DE6\u67A2", position: new Vector3(-3.2, -1.05, 0.2), frequency: 196, timbre: "sine" },
+  { id: "right", label: "\u53F3\u67A2", position: new Vector3(3.05, -0.9, 0.18), frequency: 523.25, timbre: "sine" },
+  { id: "crown", label: "\u51A0", position: new Vector3(1.75, 1.65, -0.15), frequency: 659.25, timbre: "triangle" }
+];
+var VeilScene = class {
+  constructor(stars = VEIL_STARS) {
+    this.id = "veil";
+    this.title = "\u5149\u4E1D\u5F20\u7F51";
+    this.modules = [];
+    this.stars = stars;
+  }
+  build(root) {
+    this.starsModule = new StarsModule(this.stars);
+    this.modules = [
+      new RingsModule(),
+      new LinesModule(),
+      new ParticlesModule(),
+      this.starsModule
+    ];
+    this.modules.forEach((m) => m.mount(root));
+    this.coreMat = new SpriteMaterial({
+      map: softCircleTexture(),
+      color: new Color("#E9C67C"),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.9
+    });
+    this.core = new Sprite(this.coreMat);
+    this.core.position.copy(this.stars[0].position);
+    this.core.scale.setScalar(1.5);
+    root.add(this.core);
+  }
+  /** The raycast target for star picking. */
+  get pickTarget() {
+    return this.starsModule.object;
+  }
+  update(ctx) {
+    this.modules.forEach((m) => m.update(ctx));
+    const pulse = 1.4 + ctx.impulse * ctx.impulse * 2.6 + ctx.impulse * 1 + ctx.audio.amplitude * 0.6;
+    this.core.scale.setScalar(pulse);
+    this.coreMat.color.set(ctx.params.accentColor);
+    this.coreMat.opacity = Math.min(1, 0.7 + ctx.impulse * 0.5 + ctx.audio.brightness * 0.3) * ctx.params.glow;
+  }
+  dispose() {
+    this.modules.forEach((m) => m.dispose());
+    this.modules = [];
     this.coreMat.map?.dispose();
     this.coreMat.dispose();
-    this.rings.forEach((r) => r.material.dispose());
-    this.ellipseGeo.dispose();
-    this.ripples.forEach((rip) => rip.mats.forEach((m) => m.dispose()));
+    this.core.parent?.remove(this.core);
   }
 };
-function makeEllipseGeometry(rx, ry, segments) {
-  const pts = [];
-  for (let i = 0; i <= segments; i++) {
-    const a = i / segments * Math.PI * 2;
-    pts.push(new Vector3(Math.cos(a) * rx, Math.sin(a) * ry, 0));
-  }
-  return new BufferGeometry().setFromPoints(pts);
-}
-function makeHaloTexture() {
-  const size = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(
-    size / 2,
-    size / 2,
-    0,
-    size / 2,
-    size / 2,
-    size / 2
-  );
-  g.addColorStop(0, "rgba(232,240,224,0.5)");
-  g.addColorStop(0.35, "rgba(126,216,176,0.2)");
-  g.addColorStop(1, "rgba(126,216,176,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/stellar-scene.ts
-var StellarSynthScene = class {
-  constructor(opts = {}) {
-    this.interaction = new InteractionController();
-    this.mapping = new AudioReactiveMapping();
-    this.renderer = null;
-    this.composer = null;
-    this.bloomPass = null;
-    this.scene = new Scene();
-    this.camera = new PerspectiveCamera(52, 1, 0.1, 400);
-    this.particles = null;
-    this.core = null;
-    this.canvas = null;
-    this.audio = null;
-    this.rafId = null;
-    this.clock = new Clock();
-    this.running = false;
-    this.resizeObserver = null;
-    this.pointerWorld = new Vector3();
-    this.lastDrive = null;
-    this.params = { ...DEFAULT_PARAMS, ...opts.params };
-    this.maxPixelRatio = opts.maxPixelRatio ?? 2;
-    this.autoStart = opts.autoStart ?? true;
-    this.interaction.setAfterglowSeconds(this.params.afterglowSeconds);
-  }
-  /** Attach the engine to a canvas and build the scene. */
-  mount(canvas) {
+// effects/04-thread-veil/src/lib/stellar/engine.ts
+var StellarEngine = class {
+  constructor(canvas, opts = {}) {
     this.canvas = canvas;
-    const renderer = new WebGLRenderer({
+    this.scene = new Scene();
+    this.root = new Group();
+    this.scenes = /* @__PURE__ */ new Map();
+    this.active = null;
+    this.pickTarget = null;
+    this.audioEngine = new AudioEngine();
+    this.raycaster = new Raycaster();
+    this.ndc = new Vector2();
+    // Animated state.
+    this.pointer = { x: 0, y: 0 };
+    this.targetPointer = { x: 0, y: 0 };
+    this.yaw = 0;
+    this.targetYaw = 0;
+    this.impulse = 0;
+    this.activeStar = 0;
+    this.holding = false;
+    /** Camera depth punch: spikes on trigger, eases back. */
+    this.camPunch = 0;
+    this.startTime = performance.now();
+    this.lastFrame = performance.now();
+    this.rafId = 0;
+    this.detachInteraction = null;
+    this.triggerListeners = /* @__PURE__ */ new Set();
+    this.lastDragX = 0;
+    this.onGesture = (ev) => {
+      switch (ev.phase) {
+        case "press": {
+          this.lastDragX = ev.client.x;
+          const idx = this.hitStar(ev);
+          this.triggerStar(idx >= 0 ? idx : 0, false);
+          break;
+        }
+        case "hold": {
+          this.triggerStar(this.activeStar, true);
+          break;
+        }
+        case "move": {
+          this.targetPointer.x = ev.ndc.x * 0.5;
+          this.targetPointer.y = -ev.ndc.y * 0.5;
+          break;
+        }
+        case "drag": {
+          this.targetPointer.x = ev.ndc.x * 0.5;
+          this.targetPointer.y = -ev.ndc.y * 0.5;
+          this.targetYaw += (ev.client.x - this.lastDragX) * 3e-3;
+          this.lastDragX = ev.client.x;
+          break;
+        }
+        case "release": {
+          this.holding = false;
+          break;
+        }
+      }
+    };
+    this.resize = () => {
+      const w = this.canvas.clientWidth || window.innerWidth;
+      const h = this.canvas.clientHeight || window.innerHeight;
+      this.renderer.setSize(w, h, false);
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    };
+    this.loop = (now) => {
+      const dt = Math.min(0.033, (now - this.lastFrame) / 1e3);
+      this.lastFrame = now;
+      const time = (now - this.startTime) * 1e-3;
+      this.audioSource.update?.(dt);
+      const audio = this.reducedMotion ? { ...SILENT_AUDIO } : this.audioSource.read();
+      if (!this.reducedMotion) {
+        this.pointer.x += (this.targetPointer.x - this.pointer.x) * 0.045;
+        this.pointer.y += (this.targetPointer.y - this.pointer.y) * 0.045;
+        this.yaw += (this.targetYaw - this.yaw) * 0.06;
+        this.impulse *= 0.955;
+        this.camPunch *= 0.9;
+        this.root.rotation.y = this.yaw + this.pointer.x * 0.16 * this.params.parallax;
+        this.root.rotation.x = -this.pointer.y * 0.08 * this.params.parallax;
+        const idleZ = Math.sin(time * 0.5) * 0.25;
+        this.camera.position.z = 9 + idleZ - this.camPunch * 1.6 - audio.amplitude * 0.4;
+        this.camera.position.y = this.pointer.y * 0.5 * this.params.parallax;
+        this.camera.lookAt(0, 0, 0);
+        this.camera.rotation.z += this.camPunch * 0.05 + this.pointer.x * 0.02;
+      }
+      const ctx = {
+        dt,
+        time,
+        params: this.params,
+        audio,
+        pointer: this.pointer,
+        impulse: this.impulse,
+        activeStar: this.activeStar
+      };
+      this.active?.update(ctx);
+      this.renderer.render(this.scene, this.camera);
+      this.rafId = requestAnimationFrame(this.loop);
+    };
+    this.params = resolveParams(opts.params);
+    this.reducedMotion = opts.reducedMotion ?? false;
+    this.renderer = new WebGLRenderer({
       canvas,
-      antialias: false,
-      alpha: false,
+      alpha: true,
+      antialias: true,
       powerPreference: "high-performance"
     });
-    renderer.setClearColor(526857, 1);
-    renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.9;
-    const pr = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
-    renderer.setPixelRatio(pr);
-    this.renderer = renderer;
-    this.scene.background = new Color(526857);
-    this.camera.position.set(0, 7, 58);
-    this.camera.lookAt(0, 0, 0);
-    this.particles = new ParticleSystem(this.params, pr);
-    this.scene.add(this.particles.points);
-    this.core = new GravitationalCore(this.params);
-    this.scene.add(this.core.group);
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(this.scene, this.camera));
-    const bloom = new UnrealBloomPass(
-      new Vector2(1, 1),
-      this.params.bloomStrength,
-      0.6,
-      0.72
-    );
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-    this.composer = composer;
-    this.bloomPass = bloom;
-    this.interaction.attach(canvas);
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(canvas);
-    this.resize();
-    if (this.autoStart) this.start();
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.camera = new PerspectiveCamera(45, 1, 0.1, 100);
+    this.camera.position.set(0, 0, 9);
+    this.scene.add(this.root);
+    this.synthetic = new SyntheticAudioSource();
+    this.audioSource = this.synthetic;
+    this.interaction = new InteractionManager(canvas);
   }
-  start() {
-    if (this.running || !this.renderer) return;
-    this.running = true;
-    this.clock.getDelta();
-    const tick = () => {
-      if (!this.running) return;
-      this.rafId = requestAnimationFrame(tick);
-      this.frame();
-    };
-    this.rafId = requestAnimationFrame(tick);
+  /** Register a scene; the first registered scene becomes active by default. */
+  registerScene(scene) {
+    this.scenes.set(scene.id, scene);
+    if (!this.active) this.switchScene(scene.id);
+    return this;
   }
-  stop() {
-    this.running = false;
-    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
-    this.rafId = null;
+  /** Switch the active scene, rebuilding the root group. */
+  switchScene(id) {
+    const next = this.scenes.get(id);
+    if (!next || next === this.active) return;
+    this.active?.dispose();
+    this.root.clear();
+    this.active = next;
+    next.build(this.root);
+    this.pickTarget = next.pickTarget ?? null;
+    this.activeStar = 0;
   }
-  /** Push external audio analysis (0..1 channels). No source required. */
-  setAudioData(data) {
-    if (!data) {
-      this.audio = null;
-      return;
-    }
-    this.audio = {
-      amplitude: data.amplitude ?? 0,
-      bass: data.bass ?? 0,
-      mid: data.mid ?? 0,
-      high: data.high ?? 0,
-      beat: data.beat ?? 0,
-      drone: data.drone ?? 0
-    };
+  get activeScene() {
+    return this.active;
   }
-  /** Retune the look at runtime. */
+  /** Live external parameter control. */
   setParams(partial) {
     this.params = { ...this.params, ...partial };
-    this.interaction.setAfterglowSeconds(this.params.afterglowSeconds);
-    this.particles?.applyParams(this.params);
-    this.core?.applyParams(this.params);
   }
   getParams() {
-    return { ...this.params };
+    return this.params;
   }
-  // ---- Interaction passthrough (for host-driven playing systems) ----
-  tap(point) {
-    this.interaction.tap(point);
-    this.core?.pulse(0.6);
+  /** Swap the audio-feature source (e.g. a real AnalyserAudioSource). */
+  setAudioSource(source) {
+    if (this.audioSource !== this.synthetic) this.audioSource.dispose?.();
+    this.audioSource = source;
   }
-  press(point) {
-    this.interaction.press(point);
+  onStarTrigger(cb) {
+    this.triggerListeners.add(cb);
+    return () => this.triggerListeners.delete(cb);
   }
-  hold(point) {
-    this.interaction.hold(point);
+  /** Fire a star: play its tone, pulse the visuals, spike the synthetic audio. */
+  triggerStar(index, hold = false) {
+    const scene = this.active;
+    if (!scene) return;
+    const star = scene.stars[index];
+    if (!star) return;
+    this.activeStar = index;
+    this.impulse = 1;
+    this.camPunch = 1;
+    this.holding = hold;
+    this.audioEngine.play({ frequency: star.frequency, timbre: star.timbre, hold });
+    this.synthetic.trigger(star.frequency);
+    this.triggerListeners.forEach((cb) => cb({ index, star, hold }));
   }
-  release(point) {
-    this.interaction.release(point);
+  hitStar(ev) {
+    if (!this.pickTarget) return -1;
+    this.ndc.set(ev.ndc.x, ev.ndc.y);
+    this.raycaster.params.Points.threshold = 0.35;
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.pickTarget)[0];
+    return hit && typeof hit.index === "number" ? hit.index : -1;
   }
-  onGesture(fn) {
-    return this.interaction.onGesture(fn);
-  }
-  /** Latest resolved drive — handy for a host HUD/meters. */
-  getDrive() {
-    return this.lastDrive;
-  }
-  resize() {
-    if (!this.renderer || !this.composer || !this.canvas) return;
-    const w = this.canvas.clientWidth || window.innerWidth;
-    const h = this.canvas.clientHeight || window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
-    this.renderer.setPixelRatio(pr);
-    this.renderer.setSize(w, h, false);
-    this.composer.setPixelRatio(pr);
-    this.composer.setSize(w, h);
-    this.bloomPass?.setSize(w * pr, h * pr);
-    this.particles?.setPixelRatio(pr);
-    this.camera.aspect = w / Math.max(1, h);
-    this.camera.updateProjectionMatrix();
+  start() {
+    this.interaction.attach();
+    this.detachInteraction = this.interaction.on(this.onGesture);
+    window.addEventListener("resize", this.resize);
+    this.resize();
+    this.startTime = performance.now();
+    this.lastFrame = this.startTime;
+    this.loop(this.startTime);
   }
   dispose() {
-    this.stop();
+    cancelAnimationFrame(this.rafId);
+    window.removeEventListener("resize", this.resize);
+    this.detachInteraction?.();
     this.interaction.detach();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.particles?.dispose();
-    this.core?.dispose();
-    this.composer?.dispose();
-    this.renderer?.dispose();
-    this.scene.clear();
-    this.renderer = null;
-    this.composer = null;
-    this.canvas = null;
-  }
-  frame() {
-    const dt = Math.min(0.05, this.clock.getDelta());
-    const t = this.clock.elapsedTime;
-    this.interaction.update(dt);
-    const s = this.interaction.state;
-    const drive = this.mapping.compute(this.audio, this.params, s.charge, dt);
-    this.lastDrive = drive;
-    const px = s.smoothPointer.x;
-    const py = s.smoothPointer.y;
-    this.camera.position.x += (px * 8 - this.camera.position.x) * dt * 1.6;
-    this.camera.position.y += (7 + py * 5 - this.camera.position.y) * dt * 1.6;
-    this.camera.lookAt(0, 0, 0);
-    this.pointerWorld.set(px * 22, py * 14, 0);
-    const pointerStrength = (s.isDown ? 1 : 0.35) * this.params.pointerInfluence + s.tapImpulse;
-    this.particles?.update(dt, t, drive, this.pointerWorld, pointerStrength);
-    this.core?.update(dt, t, drive, s.tapImpulse);
-    if (this.bloomPass) this.bloomPass.strength = drive.bloom;
-    this.composer?.render();
+    this.active?.dispose();
+    this.audioEngine.dispose();
+    if (this.audioSource !== this.synthetic) this.audioSource.dispose?.();
+    this.renderer.dispose();
+    this.triggerListeners.clear();
   }
 };
+function createStellarEngine(canvas, opts) {
+  const engine = new StellarEngine(canvas, opts);
+  engine.registerScene(new VeilScene());
+  return engine;
+}
 export {
-  StellarSynthScene
+  StellarEngine,
+  createStellarEngine
 };
 /*! Bundled license information:
 

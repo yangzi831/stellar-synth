@@ -1,3 +1,89 @@
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+// integration/reactive-input-state.ts
+var ZERO_FRAME = {
+  amplitude: 0,
+  bass: 0,
+  mid: 0,
+  high: 0,
+  energy: 0,
+  beat: 0,
+  drone: 0
+};
+function clamp01(value) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, Number(value))) : 0;
+}
+var ReactiveInputState = class {
+  constructor() {
+    __publicField(this, "master", { ...ZERO_FRAME });
+    __publicField(this, "kick", 0);
+    __publicField(this, "hat", 0);
+    __publicField(this, "lastTime", performance.now());
+  }
+  setAudioData(patch) {
+    for (const key of ["amplitude", "bass", "mid", "high", "energy", "beat", "drone"]) {
+      if (typeof patch[key] === "number") this.master[key] = clamp01(patch[key]);
+    }
+    if (typeof patch.audioTime === "number") this.master.audioTime = patch.audioTime;
+    return this.frame();
+  }
+  triggerEvent(event) {
+    const intensity = clamp01(event.intensity ?? 1);
+    if (event.type === "kick") this.kick = Math.max(this.kick, intensity);
+    if (event.type === "hat" || event.type.includes("hat")) this.hat = Math.max(this.hat, intensity);
+    return this.frame();
+  }
+  frame(now = performance.now()) {
+    const dt = Math.min(0.1, Math.max(0, (now - this.lastTime) / 1e3));
+    this.lastTime = now;
+    const kick = this.kick;
+    const hat = this.hat;
+    const result = {
+      ...this.master,
+      amplitude: clamp01(Math.max(this.master.amplitude, kick * 0.9, hat * 0.42)),
+      bass: clamp01(Math.max(this.master.bass, kick)),
+      high: clamp01(Math.max(this.master.high, hat)),
+      beat: clamp01(Math.max(this.master.beat, kick)),
+      energy: clamp01(Math.max(this.master.energy, kick * 0.78, hat * 0.35))
+    };
+    this.kick *= Math.exp(-dt * 13);
+    this.hat *= Math.exp(-dt * 28);
+    return result;
+  }
+};
+function starPoint(star) {
+  if (star.normalized) {
+    return {
+      x: Math.max(-1, Math.min(1, star.normalized.x)),
+      y: Math.max(-1, Math.min(1, star.normalized.y))
+    };
+  }
+  if (star.screen && star.screen.width > 0 && star.screen.height > 0) {
+    return {
+      x: star.screen.x / star.screen.width * 2 - 1,
+      y: 1 - star.screen.y / star.screen.height * 2
+    };
+  }
+  if (typeof star.x === "number" && typeof star.y === "number") {
+    return {
+      x: Math.max(-1, Math.min(1, star.x)),
+      y: Math.max(-1, Math.min(1, star.y))
+    };
+  }
+  const seed = String(star.id ?? "stellar-synth-star");
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return {
+    x: (hash & 65535) / 32767 - 1,
+    y: (hash >>> 16 & 65535) / 32767 - 1
+  };
+}
+
 // node_modules/three/build/three.core.js
 var REVISION = "185";
 var CullFaceNone = 0;
@@ -10555,505 +10641,6 @@ var BufferGeometry = class _BufferGeometry extends EventDispatcher {
     this.dispatchEvent({ type: "dispose" });
   }
 };
-var InterleavedBuffer = class {
-  /**
-   * Constructs a new interleaved buffer.
-   *
-   * @param {TypedArray} array - A typed array with a shared buffer storing attribute data.
-   * @param {number} stride - The number of typed-array elements per vertex.
-   */
-  constructor(array, stride) {
-    this.isInterleavedBuffer = true;
-    this.array = array;
-    this.stride = stride;
-    this.count = array !== void 0 ? array.length / stride : 0;
-    this.usage = StaticDrawUsage;
-    this.updateRanges = [];
-    this.version = 0;
-    this.uuid = generateUUID();
-  }
-  /**
-   * A callback function that is executed after the renderer has transferred the attribute array
-   * data to the GPU.
-   */
-  onUploadCallback() {
-  }
-  /**
-   * Flag to indicate that this attribute has changed and should be re-sent to
-   * the GPU. Set this to `true` when you modify the value of the array.
-   *
-   * @type {number}
-   * @default false
-   * @param {boolean} value
-   */
-  set needsUpdate(value) {
-    if (value === true) this.version++;
-  }
-  /**
-   * Sets the usage of this interleaved buffer.
-   *
-   * @param {(StaticDrawUsage|DynamicDrawUsage|StreamDrawUsage|StaticReadUsage|DynamicReadUsage|StreamReadUsage|StaticCopyUsage|DynamicCopyUsage|StreamCopyUsage)} value - The usage to set.
-   * @return {InterleavedBuffer} A reference to this interleaved buffer.
-   */
-  setUsage(value) {
-    this.usage = value;
-    return this;
-  }
-  /**
-   * Adds a range of data in the data array to be updated on the GPU.
-   *
-   * @param {number} start - Position at which to start update.
-   * @param {number} count - The number of components to update.
-   */
-  addUpdateRange(start, count) {
-    this.updateRanges.push({ start, count });
-  }
-  /**
-   * Clears the update ranges.
-   */
-  clearUpdateRanges() {
-    this.updateRanges.length = 0;
-  }
-  /**
-   * Copies the values of the given interleaved buffer to this instance.
-   *
-   * @param {InterleavedBuffer} source - The interleaved buffer to copy.
-   * @return {InterleavedBuffer} A reference to this instance.
-   */
-  copy(source) {
-    this.array = new source.array.constructor(source.array);
-    this.count = source.count;
-    this.stride = source.stride;
-    this.usage = source.usage;
-    return this;
-  }
-  /**
-   * Copies a vector from the given interleaved buffer to this one. The start
-   * and destination position in the attribute buffers are represented by the
-   * given indices.
-   *
-   * @param {number} index1 - The destination index into this interleaved buffer.
-   * @param {InterleavedBuffer} interleavedBuffer - The interleaved buffer to copy from.
-   * @param {number} index2 - The source index into the given interleaved buffer.
-   * @return {InterleavedBuffer} A reference to this instance.
-   */
-  copyAt(index1, interleavedBuffer, index2) {
-    index1 *= this.stride;
-    index2 *= interleavedBuffer.stride;
-    for (let i = 0, l = this.stride; i < l; i++) {
-      this.array[index1 + i] = interleavedBuffer.array[index2 + i];
-    }
-    return this;
-  }
-  /**
-   * Sets the given array data in the interleaved buffer.
-   *
-   * @param {(TypedArray|Array)} value - The array data to set.
-   * @param {number} [offset=0] - The offset in this interleaved buffer's array.
-   * @return {InterleavedBuffer} A reference to this instance.
-   */
-  set(value, offset = 0) {
-    this.array.set(value, offset);
-    return this;
-  }
-  /**
-   * Returns a new interleaved buffer with copied values from this instance.
-   *
-   * @param {Object} [data] - An object with shared array buffers that allows to retain shared structures.
-   * @return {InterleavedBuffer} A clone of this instance.
-   */
-  clone(data) {
-    if (data.arrayBuffers === void 0) {
-      data.arrayBuffers = {};
-    }
-    if (this.array.buffer._uuid === void 0) {
-      this.array.buffer._uuid = generateUUID();
-    }
-    if (data.arrayBuffers[this.array.buffer._uuid] === void 0) {
-      data.arrayBuffers[this.array.buffer._uuid] = this.array.slice(0).buffer;
-    }
-    const array = new this.array.constructor(data.arrayBuffers[this.array.buffer._uuid]);
-    const ib = new this.constructor(array, this.stride);
-    ib.setUsage(this.usage);
-    return ib;
-  }
-  /**
-   * Sets the given callback function that is executed after the Renderer has transferred
-   * the array data to the GPU. Can be used to perform clean-up operations after
-   * the upload when data are not needed anymore on the CPU side.
-   *
-   * @param {Function} callback - The `onUpload()` callback.
-   * @return {InterleavedBuffer} A reference to this instance.
-   */
-  onUpload(callback) {
-    this.onUploadCallback = callback;
-    return this;
-  }
-  /**
-   * Serializes the interleaved buffer into JSON.
-   *
-   * @param {Object} [data] - An optional value holding meta information about the serialization.
-   * @return {Object} A JSON object representing the serialized interleaved buffer.
-   */
-  toJSON(data) {
-    if (data.arrayBuffers === void 0) {
-      data.arrayBuffers = {};
-    }
-    if (this.array.buffer._uuid === void 0) {
-      this.array.buffer._uuid = generateUUID();
-    }
-    if (data.arrayBuffers[this.array.buffer._uuid] === void 0) {
-      data.arrayBuffers[this.array.buffer._uuid] = Array.from(new Uint32Array(this.array.buffer));
-    }
-    return {
-      uuid: this.uuid,
-      buffer: this.array.buffer._uuid,
-      type: this.array.constructor.name,
-      stride: this.stride
-    };
-  }
-};
-var _vector$8 = /* @__PURE__ */ new Vector3();
-var InterleavedBufferAttribute = class _InterleavedBufferAttribute {
-  /**
-   * Constructs a new interleaved buffer attribute.
-   *
-   * @param {InterleavedBuffer} interleavedBuffer - The buffer holding the interleaved data.
-   * @param {number} itemSize - The item size.
-   * @param {number} offset - The attribute offset into the buffer.
-   * @param {boolean} [normalized=false] - Whether the data are normalized or not.
-   */
-  constructor(interleavedBuffer, itemSize, offset, normalized = false) {
-    this.isInterleavedBufferAttribute = true;
-    this.name = "";
-    this.data = interleavedBuffer;
-    this.itemSize = itemSize;
-    this.offset = offset;
-    this.normalized = normalized;
-  }
-  /**
-   * The item count of this buffer attribute.
-   *
-   * @type {number}
-   * @readonly
-   */
-  get count() {
-    return this.data.count;
-  }
-  /**
-   * The array holding the interleaved buffer attribute data.
-   *
-   * @type {TypedArray}
-   */
-  get array() {
-    return this.data.array;
-  }
-  /**
-   * Flag to indicate that this attribute has changed and should be re-sent to
-   * the GPU. Set this to `true` when you modify the value of the array.
-   *
-   * @type {number}
-   * @default false
-   * @param {boolean} value
-   */
-  set needsUpdate(value) {
-    this.data.needsUpdate = value;
-  }
-  /**
-   * Applies the given 4x4 matrix to the given attribute. Only works with
-   * item size `3`.
-   *
-   * @param {Matrix4} m - The matrix to apply.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  applyMatrix4(m) {
-    for (let i = 0, l = this.data.count; i < l; i++) {
-      _vector$8.fromBufferAttribute(this, i);
-      _vector$8.applyMatrix4(m);
-      this.setXYZ(i, _vector$8.x, _vector$8.y, _vector$8.z);
-    }
-    return this;
-  }
-  /**
-   * Applies the given 3x3 normal matrix to the given attribute. Only works with
-   * item size `3`.
-   *
-   * @param {Matrix3} m - The normal matrix to apply.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  applyNormalMatrix(m) {
-    for (let i = 0, l = this.count; i < l; i++) {
-      _vector$8.fromBufferAttribute(this, i);
-      _vector$8.applyNormalMatrix(m);
-      this.setXYZ(i, _vector$8.x, _vector$8.y, _vector$8.z);
-    }
-    return this;
-  }
-  /**
-   * Applies the given 4x4 matrix to the given attribute. Only works with
-   * item size `3` and with direction vectors.
-   *
-   * @param {Matrix4} m - The matrix to apply.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  transformDirection(m) {
-    for (let i = 0, l = this.count; i < l; i++) {
-      _vector$8.fromBufferAttribute(this, i);
-      _vector$8.transformDirection(m);
-      this.setXYZ(i, _vector$8.x, _vector$8.y, _vector$8.z);
-    }
-    return this;
-  }
-  /**
-   * Returns the given component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} component - The component index.
-   * @return {number} The returned value.
-   */
-  getComponent(index, component) {
-    let value = this.array[index * this.data.stride + this.offset + component];
-    if (this.normalized) value = denormalize(value, this.array);
-    return value;
-  }
-  /**
-   * Sets the given value to the given component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} component - The component index.
-   * @param {number} value - The value to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setComponent(index, component, value) {
-    if (this.normalized) value = normalize(value, this.array);
-    this.data.array[index * this.data.stride + this.offset + component] = value;
-    return this;
-  }
-  /**
-   * Sets the x component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} x - The value to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setX(index, x) {
-    if (this.normalized) x = normalize(x, this.array);
-    this.data.array[index * this.data.stride + this.offset] = x;
-    return this;
-  }
-  /**
-   * Sets the y component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} y - The value to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setY(index, y) {
-    if (this.normalized) y = normalize(y, this.array);
-    this.data.array[index * this.data.stride + this.offset + 1] = y;
-    return this;
-  }
-  /**
-   * Sets the z component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} z - The value to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setZ(index, z) {
-    if (this.normalized) z = normalize(z, this.array);
-    this.data.array[index * this.data.stride + this.offset + 2] = z;
-    return this;
-  }
-  /**
-   * Sets the w component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} w - The value to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setW(index, w) {
-    if (this.normalized) w = normalize(w, this.array);
-    this.data.array[index * this.data.stride + this.offset + 3] = w;
-    return this;
-  }
-  /**
-   * Returns the x component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @return {number} The x component.
-   */
-  getX(index) {
-    let x = this.data.array[index * this.data.stride + this.offset];
-    if (this.normalized) x = denormalize(x, this.array);
-    return x;
-  }
-  /**
-   * Returns the y component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @return {number} The y component.
-   */
-  getY(index) {
-    let y = this.data.array[index * this.data.stride + this.offset + 1];
-    if (this.normalized) y = denormalize(y, this.array);
-    return y;
-  }
-  /**
-   * Returns the z component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @return {number} The z component.
-   */
-  getZ(index) {
-    let z = this.data.array[index * this.data.stride + this.offset + 2];
-    if (this.normalized) z = denormalize(z, this.array);
-    return z;
-  }
-  /**
-   * Returns the w component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @return {number} The w component.
-   */
-  getW(index) {
-    let w = this.data.array[index * this.data.stride + this.offset + 3];
-    if (this.normalized) w = denormalize(w, this.array);
-    return w;
-  }
-  /**
-   * Sets the x and y component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} x - The value for the x component to set.
-   * @param {number} y - The value for the y component to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setXY(index, x, y) {
-    index = index * this.data.stride + this.offset;
-    if (this.normalized) {
-      x = normalize(x, this.array);
-      y = normalize(y, this.array);
-    }
-    this.data.array[index + 0] = x;
-    this.data.array[index + 1] = y;
-    return this;
-  }
-  /**
-   * Sets the x, y and z component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} x - The value for the x component to set.
-   * @param {number} y - The value for the y component to set.
-   * @param {number} z - The value for the z component to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setXYZ(index, x, y, z) {
-    index = index * this.data.stride + this.offset;
-    if (this.normalized) {
-      x = normalize(x, this.array);
-      y = normalize(y, this.array);
-      z = normalize(z, this.array);
-    }
-    this.data.array[index + 0] = x;
-    this.data.array[index + 1] = y;
-    this.data.array[index + 2] = z;
-    return this;
-  }
-  /**
-   * Sets the x, y, z and w component of the vector at the given index.
-   *
-   * @param {number} index - The index into the buffer attribute.
-   * @param {number} x - The value for the x component to set.
-   * @param {number} y - The value for the y component to set.
-   * @param {number} z - The value for the z component to set.
-   * @param {number} w - The value for the w component to set.
-   * @return {InterleavedBufferAttribute} A reference to this instance.
-   */
-  setXYZW(index, x, y, z, w) {
-    index = index * this.data.stride + this.offset;
-    if (this.normalized) {
-      x = normalize(x, this.array);
-      y = normalize(y, this.array);
-      z = normalize(z, this.array);
-      w = normalize(w, this.array);
-    }
-    this.data.array[index + 0] = x;
-    this.data.array[index + 1] = y;
-    this.data.array[index + 2] = z;
-    this.data.array[index + 3] = w;
-    return this;
-  }
-  /**
-   * Returns a new buffer attribute with copied values from this instance.
-   *
-   * If no parameter is provided, cloning an interleaved buffer attribute will de-interleave buffer data.
-   *
-   * @param {Object} [data] - An object with interleaved buffers that allows to retain the interleaved property.
-   * @return {BufferAttribute|InterleavedBufferAttribute} A clone of this instance.
-   */
-  clone(data) {
-    if (data === void 0) {
-      log("InterleavedBufferAttribute.clone(): Cloning an interleaved buffer attribute will de-interleave buffer data.");
-      const array = [];
-      for (let i = 0; i < this.count; i++) {
-        const index = i * this.data.stride + this.offset;
-        for (let j = 0; j < this.itemSize; j++) {
-          array.push(this.data.array[index + j]);
-        }
-      }
-      return new BufferAttribute(new this.array.constructor(array), this.itemSize, this.normalized);
-    } else {
-      if (data.interleavedBuffers === void 0) {
-        data.interleavedBuffers = {};
-      }
-      if (data.interleavedBuffers[this.data.uuid] === void 0) {
-        data.interleavedBuffers[this.data.uuid] = this.data.clone(data);
-      }
-      return new _InterleavedBufferAttribute(data.interleavedBuffers[this.data.uuid], this.itemSize, this.offset, this.normalized);
-    }
-  }
-  /**
-   * Serializes the buffer attribute into JSON.
-   *
-   * If no parameter is provided, cloning an interleaved buffer attribute will de-interleave buffer data.
-   *
-   * @param {Object} [data] - An optional value holding meta information about the serialization.
-   * @return {Object} A JSON object representing the serialized buffer attribute.
-   */
-  toJSON(data) {
-    if (data === void 0) {
-      log("InterleavedBufferAttribute.toJSON(): Serializing an interleaved buffer attribute will de-interleave buffer data.");
-      const array = [];
-      for (let i = 0; i < this.count; i++) {
-        const index = i * this.data.stride + this.offset;
-        for (let j = 0; j < this.itemSize; j++) {
-          array.push(this.data.array[index + j]);
-        }
-      }
-      return {
-        itemSize: this.itemSize,
-        type: this.array.constructor.name,
-        array,
-        normalized: this.normalized
-      };
-    } else {
-      if (data.interleavedBuffers === void 0) {
-        data.interleavedBuffers = {};
-      }
-      if (data.interleavedBuffers[this.data.uuid] === void 0) {
-        data.interleavedBuffers[this.data.uuid] = this.data.toJSON(data);
-      }
-      return {
-        isInterleavedBufferAttribute: true,
-        itemSize: this.itemSize,
-        data: this.data.uuid,
-        offset: this.offset,
-        normalized: this.normalized
-      };
-    }
-  }
-};
 var _materialId = 0;
 var Material = class extends EventDispatcher {
   /**
@@ -11614,166 +11201,6 @@ var Material = class extends EventDispatcher {
     if (value === true) this.version++;
   }
 };
-var SpriteMaterial = class extends Material {
-  /**
-   * Constructs a new sprite material.
-   *
-   * @param {Object} [parameters] - An object with one or more properties
-   * defining the material's appearance. Any property of the material
-   * (including any property from inherited materials) can be passed
-   * in here. Color values can be passed any type of value accepted
-   * by {@link Color#set}.
-   */
-  constructor(parameters) {
-    super();
-    this.isSpriteMaterial = true;
-    this.type = "SpriteMaterial";
-    this.color = new Color(16777215);
-    this.map = null;
-    this.alphaMap = null;
-    this.rotation = 0;
-    this.sizeAttenuation = true;
-    this.transparent = true;
-    this.fog = true;
-    this.setValues(parameters);
-  }
-  copy(source) {
-    super.copy(source);
-    this.color.copy(source.color);
-    this.map = source.map;
-    this.alphaMap = source.alphaMap;
-    this.rotation = source.rotation;
-    this.sizeAttenuation = source.sizeAttenuation;
-    this.fog = source.fog;
-    return this;
-  }
-};
-var _geometry;
-var _intersectPoint = /* @__PURE__ */ new Vector3();
-var _worldScale = /* @__PURE__ */ new Vector3();
-var _mvPosition = /* @__PURE__ */ new Vector3();
-var _alignedPosition = /* @__PURE__ */ new Vector2();
-var _rotatedPosition = /* @__PURE__ */ new Vector2();
-var _viewWorldMatrix = /* @__PURE__ */ new Matrix4();
-var _vA$1 = /* @__PURE__ */ new Vector3();
-var _vB$1 = /* @__PURE__ */ new Vector3();
-var _vC$1 = /* @__PURE__ */ new Vector3();
-var _uvA = /* @__PURE__ */ new Vector2();
-var _uvB = /* @__PURE__ */ new Vector2();
-var _uvC = /* @__PURE__ */ new Vector2();
-var Sprite = class extends Object3D {
-  /**
-   * Constructs a new sprite.
-   *
-   * @param {(SpriteMaterial|SpriteNodeMaterial)} [material] - The sprite material.
-   */
-  constructor(material = new SpriteMaterial()) {
-    super();
-    this.isSprite = true;
-    this.type = "Sprite";
-    if (_geometry === void 0) {
-      _geometry = new BufferGeometry();
-      const float32Array = new Float32Array([
-        -0.5,
-        -0.5,
-        0,
-        0,
-        0,
-        0.5,
-        -0.5,
-        0,
-        1,
-        0,
-        0.5,
-        0.5,
-        0,
-        1,
-        1,
-        -0.5,
-        0.5,
-        0,
-        0,
-        1
-      ]);
-      const interleavedBuffer = new InterleavedBuffer(float32Array, 5);
-      _geometry.setIndex([0, 1, 2, 0, 2, 3]);
-      _geometry.setAttribute("position", new InterleavedBufferAttribute(interleavedBuffer, 3, 0, false));
-      _geometry.setAttribute("uv", new InterleavedBufferAttribute(interleavedBuffer, 2, 3, false));
-    }
-    this.geometry = _geometry;
-    this.material = material;
-    this.center = new Vector2(0.5, 0.5);
-    this.count = 1;
-  }
-  /**
-   * Computes intersection points between a casted ray and this sprite.
-   *
-   * @param {Raycaster} raycaster - The raycaster.
-   * @param {Array<Object>} intersects - The target array that holds the intersection points.
-   */
-  raycast(raycaster, intersects) {
-    if (raycaster.camera === null) {
-      error('Sprite: "Raycaster.camera" needs to be set in order to raycast against sprites.');
-    }
-    _worldScale.setFromMatrixScale(this.matrixWorld);
-    _viewWorldMatrix.copy(raycaster.camera.matrixWorld);
-    this.modelViewMatrix.multiplyMatrices(raycaster.camera.matrixWorldInverse, this.matrixWorld);
-    _mvPosition.setFromMatrixPosition(this.modelViewMatrix);
-    if (raycaster.camera.isPerspectiveCamera && this.material.sizeAttenuation === false) {
-      _worldScale.multiplyScalar(-_mvPosition.z);
-    }
-    const rotation = this.material.rotation;
-    let sin, cos;
-    if (rotation !== 0) {
-      cos = Math.cos(rotation);
-      sin = Math.sin(rotation);
-    }
-    const center = this.center;
-    transformVertex(_vA$1.set(-0.5, -0.5, 0), _mvPosition, center, _worldScale, sin, cos);
-    transformVertex(_vB$1.set(0.5, -0.5, 0), _mvPosition, center, _worldScale, sin, cos);
-    transformVertex(_vC$1.set(0.5, 0.5, 0), _mvPosition, center, _worldScale, sin, cos);
-    _uvA.set(0, 0);
-    _uvB.set(1, 0);
-    _uvC.set(1, 1);
-    let intersect = raycaster.ray.intersectTriangle(_vA$1, _vB$1, _vC$1, false, _intersectPoint);
-    if (intersect === null) {
-      transformVertex(_vB$1.set(-0.5, 0.5, 0), _mvPosition, center, _worldScale, sin, cos);
-      _uvB.set(0, 1);
-      intersect = raycaster.ray.intersectTriangle(_vA$1, _vC$1, _vB$1, false, _intersectPoint);
-      if (intersect === null) {
-        return;
-      }
-    }
-    const distance = raycaster.ray.origin.distanceTo(_intersectPoint);
-    if (distance < raycaster.near || distance > raycaster.far) return;
-    intersects.push({
-      distance,
-      point: _intersectPoint.clone(),
-      uv: Triangle.getInterpolation(_intersectPoint, _vA$1, _vB$1, _vC$1, _uvA, _uvB, _uvC, new Vector2()),
-      face: null,
-      object: this
-    });
-  }
-  copy(source, recursive) {
-    super.copy(source, recursive);
-    if (source.center !== void 0) this.center.copy(source.center);
-    this.material = source.material;
-    return this;
-  }
-};
-function transformVertex(vertexPosition, mvPosition, center, scale, sin, cos) {
-  _alignedPosition.subVectors(vertexPosition, center).addScalar(0.5).multiply(scale);
-  if (sin !== void 0) {
-    _rotatedPosition.x = cos * _alignedPosition.x - sin * _alignedPosition.y;
-    _rotatedPosition.y = sin * _alignedPosition.x + cos * _alignedPosition.y;
-  } else {
-    _rotatedPosition.copy(_alignedPosition);
-  }
-  vertexPosition.copy(mvPosition);
-  vertexPosition.x += _rotatedPosition.x;
-  vertexPosition.y += _rotatedPosition.y;
-  vertexPosition.applyMatrix4(_viewWorldMatrix);
-}
 var _vector$7 = /* @__PURE__ */ new Vector3();
 var _segCenter = /* @__PURE__ */ new Vector3();
 var _segDir = /* @__PURE__ */ new Vector3();
@@ -12911,196 +12338,6 @@ var Frustum = class {
     return new this.constructor().copy(this);
   }
 };
-var LineBasicMaterial = class extends Material {
-  /**
-   * Constructs a new line basic material.
-   *
-   * @param {Object} [parameters] - An object with one or more properties
-   * defining the material's appearance. Any property of the material
-   * (including any property from inherited materials) can be passed
-   * in here. Color values can be passed any type of value accepted
-   * by {@link Color#set}.
-   */
-  constructor(parameters) {
-    super();
-    this.isLineBasicMaterial = true;
-    this.type = "LineBasicMaterial";
-    this.color = new Color(16777215);
-    this.map = null;
-    this.linewidth = 1;
-    this.linecap = "round";
-    this.linejoin = "round";
-    this.fog = true;
-    this.setValues(parameters);
-  }
-  copy(source) {
-    super.copy(source);
-    this.color.copy(source.color);
-    this.map = source.map;
-    this.linewidth = source.linewidth;
-    this.linecap = source.linecap;
-    this.linejoin = source.linejoin;
-    this.fog = source.fog;
-    return this;
-  }
-};
-var _vStart = /* @__PURE__ */ new Vector3();
-var _vEnd = /* @__PURE__ */ new Vector3();
-var _inverseMatrix$1 = /* @__PURE__ */ new Matrix4();
-var _ray$1 = /* @__PURE__ */ new Ray();
-var _sphere$1 = /* @__PURE__ */ new Sphere();
-var _intersectPointOnRay = /* @__PURE__ */ new Vector3();
-var _intersectPointOnSegment = /* @__PURE__ */ new Vector3();
-var Line = class extends Object3D {
-  /**
-   * Constructs a new line.
-   *
-   * @param {BufferGeometry} [geometry] - The line geometry.
-   * @param {Material|Array<Material>} [material] - The line material.
-   */
-  constructor(geometry = new BufferGeometry(), material = new LineBasicMaterial()) {
-    super();
-    this.isLine = true;
-    this.type = "Line";
-    this.geometry = geometry;
-    this.material = material;
-    this.morphTargetDictionary = void 0;
-    this.morphTargetInfluences = void 0;
-    this.updateMorphTargets();
-  }
-  copy(source, recursive) {
-    super.copy(source, recursive);
-    this.material = Array.isArray(source.material) ? source.material.slice() : source.material;
-    this.geometry = source.geometry;
-    return this;
-  }
-  /**
-   * Computes an array of distance values which are necessary for rendering dashed lines.
-   * For each vertex in the geometry, the method calculates the cumulative length from the
-   * current point to the very beginning of the line.
-   *
-   * @return {Line} A reference to this line.
-   */
-  computeLineDistances() {
-    const geometry = this.geometry;
-    if (geometry.index === null) {
-      const positionAttribute = geometry.attributes.position;
-      const lineDistances = [0];
-      for (let i = 1, l = positionAttribute.count; i < l; i++) {
-        _vStart.fromBufferAttribute(positionAttribute, i - 1);
-        _vEnd.fromBufferAttribute(positionAttribute, i);
-        lineDistances[i] = lineDistances[i - 1];
-        lineDistances[i] += _vStart.distanceTo(_vEnd);
-      }
-      geometry.setAttribute("lineDistance", new Float32BufferAttribute(lineDistances, 1));
-    } else {
-      warn("Line.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.");
-    }
-    return this;
-  }
-  /**
-   * Computes intersection points between a casted ray and this line.
-   *
-   * @param {Raycaster} raycaster - The raycaster.
-   * @param {Array<Object>} intersects - The target array that holds the intersection points.
-   */
-  raycast(raycaster, intersects) {
-    const geometry = this.geometry;
-    const matrixWorld = this.matrixWorld;
-    const threshold = raycaster.params.Line.threshold;
-    const drawRange = geometry.drawRange;
-    if (geometry.boundingSphere === null) geometry.computeBoundingSphere();
-    _sphere$1.copy(geometry.boundingSphere);
-    _sphere$1.applyMatrix4(matrixWorld);
-    _sphere$1.radius += threshold;
-    if (raycaster.ray.intersectsSphere(_sphere$1) === false) return;
-    _inverseMatrix$1.copy(matrixWorld).invert();
-    _ray$1.copy(raycaster.ray).applyMatrix4(_inverseMatrix$1);
-    const localThreshold = threshold / ((this.scale.x + this.scale.y + this.scale.z) / 3);
-    const localThresholdSq = localThreshold * localThreshold;
-    const step = this.isLineSegments ? 2 : 1;
-    const index = geometry.index;
-    const attributes = geometry.attributes;
-    const positionAttribute = attributes.position;
-    if (index !== null) {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(index.count, drawRange.start + drawRange.count);
-      for (let i = start, l = end - 1; i < l; i += step) {
-        const a = index.getX(i);
-        const b = index.getX(i + 1);
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, i);
-        if (intersect) {
-          intersects.push(intersect);
-        }
-      }
-      if (this.isLineLoop) {
-        const a = index.getX(end - 1);
-        const b = index.getX(start);
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, end - 1);
-        if (intersect) {
-          intersects.push(intersect);
-        }
-      }
-    } else {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(positionAttribute.count, drawRange.start + drawRange.count);
-      for (let i = start, l = end - 1; i < l; i += step) {
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, i, i + 1, i);
-        if (intersect) {
-          intersects.push(intersect);
-        }
-      }
-      if (this.isLineLoop) {
-        const intersect = checkIntersection(this, raycaster, _ray$1, localThresholdSq, end - 1, start, end - 1);
-        if (intersect) {
-          intersects.push(intersect);
-        }
-      }
-    }
-  }
-  /**
-   * Sets the values of {@link Line#morphTargetDictionary} and {@link Line#morphTargetInfluences}
-   * to make sure existing morph targets can influence this 3D object.
-   */
-  updateMorphTargets() {
-    const geometry = this.geometry;
-    const morphAttributes = geometry.morphAttributes;
-    const keys = Object.keys(morphAttributes);
-    if (keys.length > 0) {
-      const morphAttribute = morphAttributes[keys[0]];
-      if (morphAttribute !== void 0) {
-        this.morphTargetInfluences = [];
-        this.morphTargetDictionary = {};
-        for (let m = 0, ml = morphAttribute.length; m < ml; m++) {
-          const name = morphAttribute[m].name || String(m);
-          this.morphTargetInfluences.push(0);
-          this.morphTargetDictionary[name] = m;
-        }
-      }
-    }
-  }
-};
-function checkIntersection(object, raycaster, ray, thresholdSq, a, b, i) {
-  const positionAttribute = object.geometry.attributes.position;
-  _vStart.fromBufferAttribute(positionAttribute, a);
-  _vEnd.fromBufferAttribute(positionAttribute, b);
-  const distSq = ray.distanceSqToSegment(_vStart, _vEnd, _intersectPointOnRay, _intersectPointOnSegment);
-  if (distSq > thresholdSq) return;
-  _intersectPointOnRay.applyMatrix4(object.matrixWorld);
-  const distance = raycaster.ray.origin.distanceTo(_intersectPointOnRay);
-  if (distance < raycaster.near || distance > raycaster.far) return;
-  return {
-    distance,
-    // What do we want? intersection point on the ray or on the segment??
-    // point: raycaster.ray.at( distance ),
-    point: _intersectPointOnSegment.clone().applyMatrix4(object.matrixWorld),
-    index: i,
-    face: null,
-    faceIndex: null,
-    barycoord: null,
-    object
-  };
-}
 var PointsMaterial = class extends Material {
   /**
    * Constructs a new points material.
@@ -13556,6 +12793,84 @@ var PlaneGeometry = class _PlaneGeometry extends BufferGeometry {
    */
   static fromJSON(data) {
     return new _PlaneGeometry(data.width, data.height, data.widthSegments, data.heightSegments);
+  }
+};
+var RingGeometry = class _RingGeometry extends BufferGeometry {
+  /**
+   * Constructs a new ring geometry.
+   *
+   * @param {number} [innerRadius=0.5] - The inner radius of the ring.
+   * @param {number} [outerRadius=1] - The outer radius of the ring.
+   * @param {number} [thetaSegments=32] - Number of segments. A higher number means the ring will be more round. Minimum is `3`.
+   * @param {number} [phiSegments=1] - Number of segments per ring segment. Minimum is `1`.
+   * @param {number} [thetaStart=0] - Starting angle in radians.
+   * @param {number} [thetaLength=Math.PI*2] - Central angle in radians.
+   */
+  constructor(innerRadius = 0.5, outerRadius = 1, thetaSegments = 32, phiSegments = 1, thetaStart = 0, thetaLength = Math.PI * 2) {
+    super();
+    this.type = "RingGeometry";
+    this.parameters = {
+      innerRadius,
+      outerRadius,
+      thetaSegments,
+      phiSegments,
+      thetaStart,
+      thetaLength
+    };
+    thetaSegments = Math.max(3, thetaSegments);
+    phiSegments = Math.max(1, phiSegments);
+    const indices = [];
+    const vertices = [];
+    const normals = [];
+    const uvs = [];
+    let radius = innerRadius;
+    const radiusStep = (outerRadius - innerRadius) / phiSegments;
+    const vertex2 = new Vector3();
+    const uv = new Vector2();
+    for (let j = 0; j <= phiSegments; j++) {
+      for (let i = 0; i <= thetaSegments; i++) {
+        const segment = thetaStart + i / thetaSegments * thetaLength;
+        vertex2.x = radius * Math.cos(segment);
+        vertex2.y = radius * Math.sin(segment);
+        vertices.push(vertex2.x, vertex2.y, vertex2.z);
+        normals.push(0, 0, 1);
+        uv.x = (vertex2.x / outerRadius + 1) / 2;
+        uv.y = (vertex2.y / outerRadius + 1) / 2;
+        uvs.push(uv.x, uv.y);
+      }
+      radius += radiusStep;
+    }
+    for (let j = 0; j < phiSegments; j++) {
+      const thetaSegmentLevel = j * (thetaSegments + 1);
+      for (let i = 0; i < thetaSegments; i++) {
+        const segment = i + thetaSegmentLevel;
+        const a = segment;
+        const b = segment + thetaSegments + 1;
+        const c = segment + thetaSegments + 2;
+        const d = segment + 1;
+        indices.push(a, b, d);
+        indices.push(b, c, d);
+      }
+    }
+    this.setIndex(indices);
+    this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+    this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+    this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+  }
+  copy(source) {
+    super.copy(source);
+    this.parameters = Object.assign({}, source.parameters);
+    return this;
+  }
+  /**
+   * Factory method for creating an instance of this class from the given
+   * JSON object.
+   *
+   * @param {Object} data - A JSON object representing the serialized geometry.
+   * @return {RingGeometry} A new instance.
+   */
+  static fromJSON(data) {
+    return new _RingGeometry(data.innerRadius, data.outerRadius, data.thetaSegments, data.phiSegments, data.thetaStart, data.thetaLength);
   }
 };
 function cloneUniforms(src) {
@@ -15420,120 +14735,6 @@ var ArrayCamera = class extends PerspectiveCamera {
     this.cameras = array;
   }
 };
-var Timer = class {
-  /**
-   * Constructs a new timer.
-   */
-  constructor() {
-    this._previousTime = 0;
-    this._currentTime = 0;
-    this._startTime = performance.now();
-    this._delta = 0;
-    this._elapsed = 0;
-    this._timescale = 1;
-    this._document = null;
-    this._pageVisibilityHandler = null;
-  }
-  /**
-   * Connect the timer to the given document.Calling this method is not mandatory to
-   * use the timer but enables the usage of the Page Visibility API to avoid large time
-   * delta values.
-   *
-   * @param {Document} document - The document.
-   */
-  connect(document2) {
-    this._document = document2;
-    if (document2.hidden !== void 0) {
-      this._pageVisibilityHandler = handleVisibilityChange.bind(this);
-      document2.addEventListener("visibilitychange", this._pageVisibilityHandler, false);
-    }
-  }
-  /**
-   * Disconnects the timer from the DOM and also disables the usage of the Page Visibility API.
-   */
-  disconnect() {
-    if (this._pageVisibilityHandler !== null) {
-      this._document.removeEventListener("visibilitychange", this._pageVisibilityHandler);
-      this._pageVisibilityHandler = null;
-    }
-    this._document = null;
-  }
-  /**
-   * Returns the time delta in seconds.
-   *
-   * @return {number} The time delta in second.
-   */
-  getDelta() {
-    return this._delta / 1e3;
-  }
-  /**
-   * Returns the elapsed time in seconds.
-   *
-   * @return {number} The elapsed time in second.
-   */
-  getElapsed() {
-    return this._elapsed / 1e3;
-  }
-  /**
-   * Returns the timescale.
-   *
-   * @return {number} The timescale.
-   */
-  getTimescale() {
-    return this._timescale;
-  }
-  /**
-   * Sets the given timescale which scale the time delta computation
-   * in `update()`.
-   *
-   * @param {number} timescale - The timescale to set.
-   * @return {Timer} A reference to this timer.
-   */
-  setTimescale(timescale) {
-    this._timescale = timescale;
-    return this;
-  }
-  /**
-   * Resets the time computation for the current simulation step.
-   *
-   * @return {Timer} A reference to this timer.
-   */
-  reset() {
-    this._currentTime = performance.now() - this._startTime;
-    return this;
-  }
-  /**
-   * Can be used to free all internal resources. Usually called when
-   * the timer instance isn't required anymore.
-   */
-  dispose() {
-    this.disconnect();
-  }
-  /**
-   * Updates the internal state of the timer. This method should be called
-   * once per simulation step and before you perform queries against the timer
-   * (e.g. via `getDelta()`).
-   *
-   * @param {number} timestamp - The current time in milliseconds. Can be obtained
-   * from the `requestAnimationFrame` callback argument. If not provided, the current
-   * time will be determined with `performance.now`.
-   * @return {Timer} A reference to this timer.
-   */
-  update(timestamp) {
-    if (this._pageVisibilityHandler !== null && this._document.hidden === true) {
-      this._delta = 0;
-    } else {
-      this._previousTime = this._currentTime;
-      this._currentTime = (timestamp !== void 0 ? timestamp : performance.now()) - this._startTime;
-      this._delta = (this._currentTime - this._previousTime) * this._timescale;
-      this._elapsed += this._delta;
-    }
-    return this;
-  }
-};
-function handleVisibilityChange() {
-  if (this._document.hidden === false) this.reset();
-}
 var _RESERVED_CHARS_RE = "\\[\\]\\.:\\/";
 var _reservedRe = new RegExp("[" + _RESERVED_CHARS_RE + "]", "g");
 var _wordChar = "[^" + _RESERVED_CHARS_RE + "]";
@@ -15960,69 +15161,6 @@ PropertyBinding.prototype.SetterByBindingTypeAndVersioning = [
   ]
 ];
 var _controlInterpolantsResultBuffer = new Float32Array(1);
-var Clock = class {
-  /**
-   * Constructs a new clock.
-   *
-   * @deprecated since 183.
-   * @param {boolean} [autoStart=true] - Whether to automatically start the clock when
-   * `getDelta()` is called for the first time.
-   */
-  constructor(autoStart = true) {
-    this.autoStart = autoStart;
-    this.startTime = 0;
-    this.oldTime = 0;
-    this.elapsedTime = 0;
-    this.running = false;
-    warn("Clock: This module has been deprecated. Please use THREE.Timer instead.");
-  }
-  /**
-   * Starts the clock. When `autoStart` is set to `true`, the method is automatically
-   * called by the class.
-   */
-  start() {
-    this.startTime = performance.now();
-    this.oldTime = this.startTime;
-    this.elapsedTime = 0;
-    this.running = true;
-  }
-  /**
-   * Stops the clock.
-   */
-  stop() {
-    this.getElapsedTime();
-    this.running = false;
-    this.autoStart = false;
-  }
-  /**
-   * Returns the elapsed time in seconds.
-   *
-   * @return {number} The elapsed time.
-   */
-  getElapsedTime() {
-    this.getDelta();
-    return this.elapsedTime;
-  }
-  /**
-   * Returns the delta time in seconds.
-   *
-   * @return {number} The delta time.
-   */
-  getDelta() {
-    let diff = 0;
-    if (this.autoStart && !this.running) {
-      this.start();
-      return 0;
-    }
-    if (this.running) {
-      const newTime = performance.now();
-      diff = (newTime - this.oldTime) / 1e3;
-      this.oldTime = newTime;
-      this.elapsedTime += diff;
-    }
-    return diff;
-  }
-};
 var _Matrix2 = class _Matrix2 {
   /**
    * Constructs a new 2x2 matrix. The arguments are supposed to be
@@ -27672,1086 +26810,34 @@ var WebGLRenderer = class {
   }
 };
 
-// node_modules/three/examples/jsm/shaders/CopyShader.js
-var CopyShader = {
-  name: "CopyShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "opacity": { value: 1 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		uniform float opacity;
-
-		uniform sampler2D tDiffuse;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vec4 texel = texture2D( tDiffuse, vUv );
-			gl_FragColor = opacity * texel;
-
-
-		}`
-  )
+// effects/15-supernova-pulse/src/lib/stellar-engine/types.ts
+var STELLAR_PALETTE = {
+  star: "#F7FBFF",
+  cyan: "#2FE0D0",
+  blue: "#4A78FF",
+  violet: "#8A6CFF",
+  background: "#060614"
 };
-
-// node_modules/three/examples/jsm/postprocessing/Pass.js
-var Pass = class {
-  /**
-   * Constructs a new pass.
-   */
-  constructor() {
-    this.isPass = true;
-    this.enabled = true;
-    this.needsSwap = true;
-    this.clear = false;
-    this.renderToScreen = false;
-  }
-  /**
-   * Sets the size of the pass.
-   *
-   * @abstract
-   * @param {number} width - The width to set.
-   * @param {number} height - The height to set.
-   */
-  setSize() {
-  }
-  /**
-   * This method holds the render logic of a pass. It must be implemented in all derived classes.
-   *
-   * @abstract
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render() {
-    console.error("THREE.Pass: .render() must be implemented in derived pass.");
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   *
-   * @abstract
-   */
-  dispose() {
-  }
+var DEFAULT_PARAMS = {
+  particleCount: 68e3,
+  maxPixelRatio: 2,
+  particleSize: 0.05,
+  baseRotation: 0.045,
+  spinSpeed: 0.06,
+  brightnessGain: 0.34,
+  coreExpandGain: 0.4,
+  churnGain: 0.06,
+  flickerGain: 1,
+  beatGain: 1,
+  droneGain: 0.18,
+  gatherStrength: 1.35,
+  burstStrength: 0.38,
+  afterglowDecay: 0.965,
+  parallax: 0.42,
+  syntheticBeat: true,
+  respectReducedMotion: true
 };
-var _camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-var FullscreenTriangleGeometry = class extends BufferGeometry {
-  constructor() {
-    super();
-    this.setAttribute("position", new Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
-    this.setAttribute("uv", new Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2));
-  }
-};
-var _geometry2 = new FullscreenTriangleGeometry();
-var FullScreenQuad = class {
-  /**
-   * Constructs a new full screen quad.
-   *
-   * @param {?Material} material - The material to render te full screen quad with.
-   */
-  constructor(material) {
-    this._mesh = new Mesh(_geometry2, material);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the instance is no longer used in your app.
-   */
-  dispose() {
-    this._mesh.geometry.dispose();
-  }
-  /**
-   * Renders the full screen quad.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   */
-  render(renderer) {
-    renderer.render(this._mesh, _camera);
-  }
-  /**
-   * The quad's material.
-   *
-   * @type {?Material}
-   */
-  get material() {
-    return this._mesh.material;
-  }
-  set material(value) {
-    this._mesh.material = value;
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/ShaderPass.js
-var ShaderPass = class extends Pass {
-  /**
-   * Constructs a new shader pass.
-   *
-   * @param {Object|ShaderMaterial} [shader] - A shader object holding vertex and fragment shader as well as
-   * defines and uniforms. It's also valid to pass a custom shader material.
-   * @param {string} [textureID='tDiffuse'] - The name of the texture uniform that should sample
-   * the read buffer.
-   */
-  constructor(shader, textureID = "tDiffuse") {
-    super();
-    this.textureID = textureID;
-    this.uniforms = null;
-    this.material = null;
-    if (shader instanceof ShaderMaterial) {
-      this.uniforms = shader.uniforms;
-      this.material = shader;
-    } else if (shader) {
-      this.uniforms = UniformsUtils.clone(shader.uniforms);
-      this.material = new ShaderMaterial({
-        name: shader.name !== void 0 ? shader.name : "unspecified",
-        defines: Object.assign({}, shader.defines),
-        uniforms: this.uniforms,
-        vertexShader: shader.vertexShader,
-        fragmentShader: shader.fragmentShader
-      });
-    }
-    this._fsQuad = new FullScreenQuad(this.material);
-  }
-  /**
-   * Performs the shader pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    if (this.uniforms[this.textureID]) {
-      this.uniforms[this.textureID].value = readBuffer.texture;
-    }
-    this._fsQuad.material = this.material;
-    if (this.renderToScreen) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(writeBuffer);
-      if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-      this._fsQuad.render(renderer);
-    }
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    this.material.dispose();
-    this._fsQuad.dispose();
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/MaskPass.js
-var MaskPass = class extends Pass {
-  /**
-   * Constructs a new mask pass.
-   *
-   * @param {Scene} scene - The 3D objects in this scene will define the mask.
-   * @param {Camera} camera - The camera.
-   */
-  constructor(scene, camera) {
-    super();
-    this.scene = scene;
-    this.camera = camera;
-    this.clear = true;
-    this.needsSwap = false;
-    this.inverse = false;
-  }
-  /**
-   * Performs a mask pass with the configured scene and camera.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    const context = renderer.getContext();
-    const state = renderer.state;
-    state.buffers.color.setMask(false);
-    state.buffers.depth.setMask(false);
-    state.buffers.color.setLocked(true);
-    state.buffers.depth.setLocked(true);
-    let writeValue, clearValue;
-    if (this.inverse) {
-      writeValue = 0;
-      clearValue = 1;
-    } else {
-      writeValue = 1;
-      clearValue = 0;
-    }
-    state.buffers.stencil.setTest(true);
-    state.buffers.stencil.setOp(context.REPLACE, context.REPLACE, context.REPLACE);
-    state.buffers.stencil.setFunc(context.ALWAYS, writeValue, 4294967295);
-    state.buffers.stencil.setClear(clearValue);
-    state.buffers.stencil.setLocked(true);
-    renderer.setRenderTarget(readBuffer);
-    if (this.clear) renderer.clear();
-    renderer.render(this.scene, this.camera);
-    renderer.setRenderTarget(writeBuffer);
-    if (this.clear) renderer.clear();
-    renderer.render(this.scene, this.camera);
-    state.buffers.color.setLocked(false);
-    state.buffers.depth.setLocked(false);
-    state.buffers.color.setMask(true);
-    state.buffers.depth.setMask(true);
-    state.buffers.stencil.setLocked(false);
-    state.buffers.stencil.setFunc(context.EQUAL, 1, 4294967295);
-    state.buffers.stencil.setOp(context.KEEP, context.KEEP, context.KEEP);
-    state.buffers.stencil.setLocked(true);
-  }
-};
-var ClearMaskPass = class extends Pass {
-  /**
-   * Constructs a new clear mask pass.
-   */
-  constructor() {
-    super();
-    this.needsSwap = false;
-  }
-  /**
-   * Performs the clear of the currently defined mask.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer) {
-    renderer.state.buffers.stencil.setLocked(false);
-    renderer.state.buffers.stencil.setTest(false);
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/EffectComposer.js
-var EffectComposer = class {
-  /**
-   * Constructs a new effect composer.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} [renderTarget] - This render target and a clone will
-   * be used as the internal read and write buffers. If not given, the composer creates
-   * the buffers automatically.
-   */
-  constructor(renderer, renderTarget) {
-    this.renderer = renderer;
-    this._pixelRatio = renderer.getPixelRatio();
-    if (renderTarget === void 0) {
-      const size = renderer.getSize(new Vector2());
-      this._width = size.width;
-      this._height = size.height;
-      renderTarget = new WebGLRenderTarget(this._width * this._pixelRatio, this._height * this._pixelRatio, { type: HalfFloatType });
-      renderTarget.texture.name = "EffectComposer.rt1";
-    } else {
-      this._width = renderTarget.width;
-      this._height = renderTarget.height;
-    }
-    this.renderTarget1 = renderTarget;
-    this.renderTarget2 = renderTarget.clone();
-    this.renderTarget2.texture.name = "EffectComposer.rt2";
-    this.writeBuffer = this.renderTarget1;
-    this.readBuffer = this.renderTarget2;
-    this.renderToScreen = true;
-    this.passes = [];
-    this.copyPass = new ShaderPass(CopyShader);
-    this.copyPass.material.blending = NoBlending;
-    this.timer = new Timer();
-  }
-  /**
-   * Swaps the internal read/write buffers.
-   */
-  swapBuffers() {
-    const tmp = this.readBuffer;
-    this.readBuffer = this.writeBuffer;
-    this.writeBuffer = tmp;
-  }
-  /**
-   * Adds the given pass to the pass chain.
-   *
-   * @param {Pass} pass - The pass to add.
-   */
-  addPass(pass) {
-    this.passes.push(pass);
-    pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-  }
-  /**
-   * Inserts the given pass at a given index.
-   *
-   * @param {Pass} pass - The pass to insert.
-   * @param {number} index - The index into the pass chain.
-   */
-  insertPass(pass, index) {
-    this.passes.splice(index, 0, pass);
-    pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-  }
-  /**
-   * Removes the given pass from the pass chain.
-   *
-   * @param {Pass} pass - The pass to remove.
-   */
-  removePass(pass) {
-    const index = this.passes.indexOf(pass);
-    if (index !== -1) {
-      this.passes.splice(index, 1);
-    }
-  }
-  /**
-   * Returns `true` if the pass for the given index is the last enabled pass in the pass chain.
-   *
-   * @param {number} passIndex - The pass index.
-   * @return {boolean} Whether the pass for the given index is the last pass in the pass chain.
-   */
-  isLastEnabledPass(passIndex) {
-    for (let i = passIndex + 1; i < this.passes.length; i++) {
-      if (this.passes[i].enabled) {
-        return false;
-      }
-    }
-    return true;
-  }
-  /**
-   * Executes all enabled post-processing passes in order to produce the final frame.
-   *
-   * @param {number} deltaTime - The delta time in seconds. If not given, the composer computes
-   * its own time delta value.
-   */
-  render(deltaTime) {
-    this.timer.update();
-    if (deltaTime === void 0) {
-      deltaTime = this.timer.getDelta();
-    }
-    const currentRenderTarget = this.renderer.getRenderTarget();
-    let maskActive = false;
-    for (let i = 0, il = this.passes.length; i < il; i++) {
-      const pass = this.passes[i];
-      if (pass.enabled === false) continue;
-      pass.renderToScreen = this.renderToScreen && this.isLastEnabledPass(i);
-      pass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime, maskActive);
-      if (pass.needsSwap) {
-        if (maskActive) {
-          const context = this.renderer.getContext();
-          const stencil = this.renderer.state.buffers.stencil;
-          stencil.setFunc(context.NOTEQUAL, 1, 4294967295);
-          this.copyPass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime);
-          stencil.setFunc(context.EQUAL, 1, 4294967295);
-        }
-        this.swapBuffers();
-      }
-      if (MaskPass !== void 0) {
-        if (pass instanceof MaskPass) {
-          maskActive = true;
-        } else if (pass instanceof ClearMaskPass) {
-          maskActive = false;
-        }
-      }
-    }
-    this.renderer.setRenderTarget(currentRenderTarget);
-  }
-  /**
-   * Resets the internal state of the EffectComposer.
-   *
-   * @param {WebGLRenderTarget} [renderTarget] - This render target has the same purpose like
-   * the one from the constructor. If set, it is used to setup the read and write buffers.
-   */
-  reset(renderTarget) {
-    if (renderTarget === void 0) {
-      const size = this.renderer.getSize(new Vector2());
-      this._pixelRatio = this.renderer.getPixelRatio();
-      this._width = size.width;
-      this._height = size.height;
-      renderTarget = this.renderTarget1.clone();
-      renderTarget.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
-    }
-    this.renderTarget1.dispose();
-    this.renderTarget2.dispose();
-    this.renderTarget1 = renderTarget;
-    this.renderTarget2 = renderTarget.clone();
-    this.writeBuffer = this.renderTarget1;
-    this.readBuffer = this.renderTarget2;
-  }
-  /**
-   * Resizes the internal read and write buffers as well as all passes. Similar to {@link WebGLRenderer#setSize},
-   * this method honors the current pixel ration.
-   *
-   * @param {number} width - The width in logical pixels.
-   * @param {number} height - The height in logical pixels.
-   */
-  setSize(width, height) {
-    this._width = width;
-    this._height = height;
-    const effectiveWidth = this._width * this._pixelRatio;
-    const effectiveHeight = this._height * this._pixelRatio;
-    this.renderTarget1.setSize(effectiveWidth, effectiveHeight);
-    this.renderTarget2.setSize(effectiveWidth, effectiveHeight);
-    for (let i = 0; i < this.passes.length; i++) {
-      this.passes[i].setSize(effectiveWidth, effectiveHeight);
-    }
-  }
-  /**
-   * Sets device pixel ratio. This is usually used for HiDPI device to prevent blurring output.
-   * Setting the pixel ratio will automatically resize the composer.
-   *
-   * @param {number} pixelRatio - The pixel ratio to set.
-   */
-  setPixelRatio(pixelRatio) {
-    this._pixelRatio = pixelRatio;
-    this.setSize(this._width, this._height);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the composer is no longer used in your app.
-   */
-  dispose() {
-    this.renderTarget1.dispose();
-    this.renderTarget2.dispose();
-    this.copyPass.dispose();
-  }
-};
-
-// node_modules/three/examples/jsm/postprocessing/RenderPass.js
-var RenderPass = class extends Pass {
-  /**
-   * Constructs a new render pass.
-   *
-   * @param {Scene} scene - The scene to render.
-   * @param {Camera} camera - The camera.
-   * @param {?Material} [overrideMaterial=null] - The override material. If set, this material is used
-   * for all objects in the scene.
-   * @param {?(number|Color|string)} [clearColor=null] - The clear color of the render pass.
-   * @param {?number} [clearAlpha=null] - The clear alpha of the render pass.
-   */
-  constructor(scene, camera, overrideMaterial = null, clearColor = null, clearAlpha = null) {
-    super();
-    this.scene = scene;
-    this.camera = camera;
-    this.overrideMaterial = overrideMaterial;
-    this.clearColor = clearColor;
-    this.clearAlpha = clearAlpha;
-    this.clear = true;
-    this.clearDepth = false;
-    this.needsSwap = false;
-    this.isRenderPass = true;
-    this._oldClearColor = new Color();
-  }
-  /**
-   * Performs a beauty pass with the configured scene and camera.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    const oldAutoClear = renderer.autoClear;
-    renderer.autoClear = false;
-    let oldClearAlpha, oldOverrideMaterial;
-    if (this.overrideMaterial !== null) {
-      oldOverrideMaterial = this.scene.overrideMaterial;
-      this.scene.overrideMaterial = this.overrideMaterial;
-    }
-    if (this.clearColor !== null) {
-      renderer.getClearColor(this._oldClearColor);
-      renderer.setClearColor(this.clearColor, renderer.getClearAlpha());
-    }
-    if (this.clearAlpha !== null) {
-      oldClearAlpha = renderer.getClearAlpha();
-      renderer.setClearAlpha(this.clearAlpha);
-    }
-    if (this.clearDepth == true) {
-      renderer.clearDepth();
-    }
-    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
-    if (this.clear === true) {
-      renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-    }
-    renderer.render(this.scene, this.camera);
-    if (this.clearColor !== null) {
-      renderer.setClearColor(this._oldClearColor);
-    }
-    if (this.clearAlpha !== null) {
-      renderer.setClearAlpha(oldClearAlpha);
-    }
-    if (this.overrideMaterial !== null) {
-      this.scene.overrideMaterial = oldOverrideMaterial;
-    }
-    renderer.autoClear = oldAutoClear;
-  }
-};
-
-// node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js
-var LuminosityHighPassShader = {
-  name: "LuminosityHighPassShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "luminosityThreshold": { value: 1 },
-    "smoothWidth": { value: 1 },
-    "defaultColor": { value: new Color(0) },
-    "defaultOpacity": { value: 0 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		uniform sampler2D tDiffuse;
-		uniform vec3 defaultColor;
-		uniform float defaultOpacity;
-		uniform float luminosityThreshold;
-		uniform float smoothWidth;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vec4 texel = texture2D( tDiffuse, vUv );
-
-			float v = luminance( texel.xyz );
-
-			vec4 outputColor = vec4( defaultColor.rgb, defaultOpacity );
-
-			float alpha = smoothstep( luminosityThreshold, luminosityThreshold + smoothWidth, v );
-
-			gl_FragColor = mix( outputColor, texel, alpha );
-
-		}`
-  )
-};
-
-// node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js
-var UnrealBloomPass = class _UnrealBloomPass extends Pass {
-  /**
-   * Constructs a new Unreal Bloom pass.
-   *
-   * @param {Vector2} [resolution] - The effect's resolution.
-   * @param {number} [strength=1] - The Bloom strength.
-   * @param {number} radius - The Bloom radius.
-   * @param {number} threshold - The luminance threshold limits which bright areas contribute to the Bloom effect.
-   */
-  constructor(resolution, strength = 1, radius, threshold) {
-    super();
-    this.strength = strength;
-    this.radius = radius;
-    this.threshold = threshold;
-    this.resolution = resolution !== void 0 ? new Vector2(resolution.x, resolution.y) : new Vector2(256, 256);
-    this.clearColor = new Color(0, 0, 0);
-    this.needsSwap = false;
-    this.renderTargetsHorizontal = [];
-    this.renderTargetsVertical = [];
-    this.nMips = 5;
-    let resx = Math.round(this.resolution.x / 2);
-    let resy = Math.round(this.resolution.y / 2);
-    this.renderTargetBright = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-    this.renderTargetBright.texture.name = "UnrealBloomPass.bright";
-    this.renderTargetBright.texture.generateMipmaps = false;
-    for (let i = 0; i < this.nMips; i++) {
-      const renderTargetHorizontal = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-      renderTargetHorizontal.texture.name = "UnrealBloomPass.h" + i;
-      renderTargetHorizontal.texture.generateMipmaps = false;
-      this.renderTargetsHorizontal.push(renderTargetHorizontal);
-      const renderTargetVertical = new WebGLRenderTarget(resx, resy, { type: HalfFloatType });
-      renderTargetVertical.texture.name = "UnrealBloomPass.v" + i;
-      renderTargetVertical.texture.generateMipmaps = false;
-      this.renderTargetsVertical.push(renderTargetVertical);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-    const highPassShader = LuminosityHighPassShader;
-    this.highPassUniforms = UniformsUtils.clone(highPassShader.uniforms);
-    this.highPassUniforms["luminosityThreshold"].value = threshold;
-    this.highPassUniforms["smoothWidth"].value = 0.01;
-    this.materialHighPassFilter = new ShaderMaterial({
-      uniforms: this.highPassUniforms,
-      vertexShader: highPassShader.vertexShader,
-      fragmentShader: highPassShader.fragmentShader
-    });
-    this.separableBlurMaterials = [];
-    const kernelSizeArray = [6, 10, 14, 18, 22];
-    resx = Math.round(this.resolution.x / 2);
-    resy = Math.round(this.resolution.y / 2);
-    for (let i = 0; i < this.nMips; i++) {
-      this.separableBlurMaterials.push(this._getSeparableBlurMaterial(kernelSizeArray[i]));
-      this.separableBlurMaterials[i].uniforms["invSize"].value = new Vector2(1 / resx, 1 / resy);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-    this.compositeMaterial = this._getCompositeMaterial(this.nMips);
-    this.compositeMaterial.uniforms["blurTexture1"].value = this.renderTargetsVertical[0].texture;
-    this.compositeMaterial.uniforms["blurTexture2"].value = this.renderTargetsVertical[1].texture;
-    this.compositeMaterial.uniforms["blurTexture3"].value = this.renderTargetsVertical[2].texture;
-    this.compositeMaterial.uniforms["blurTexture4"].value = this.renderTargetsVertical[3].texture;
-    this.compositeMaterial.uniforms["blurTexture5"].value = this.renderTargetsVertical[4].texture;
-    this.compositeMaterial.uniforms["bloomStrength"].value = strength;
-    this.compositeMaterial.uniforms["bloomRadius"].value = 0.1;
-    const bloomFactors = [1, 0.8, 0.6, 0.4, 0.2];
-    this.compositeMaterial.uniforms["bloomFactors"].value = bloomFactors;
-    this.bloomTintColors = [new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1), new Vector3(1, 1, 1)];
-    this.compositeMaterial.uniforms["bloomTintColors"].value = this.bloomTintColors;
-    this.copyUniforms = UniformsUtils.clone(CopyShader.uniforms);
-    this.blendMaterial = new ShaderMaterial({
-      uniforms: this.copyUniforms,
-      vertexShader: CopyShader.vertexShader,
-      fragmentShader: CopyShader.fragmentShader,
-      premultipliedAlpha: true,
-      blending: AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      transparent: true
-    });
-    this._oldClearColor = new Color();
-    this._oldClearAlpha = 1;
-    this._basic = new MeshBasicMaterial();
-    this._fsQuad = new FullScreenQuad(null);
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    for (let i = 0; i < this.renderTargetsHorizontal.length; i++) {
-      this.renderTargetsHorizontal[i].dispose();
-    }
-    for (let i = 0; i < this.renderTargetsVertical.length; i++) {
-      this.renderTargetsVertical[i].dispose();
-    }
-    this.renderTargetBright.dispose();
-    for (let i = 0; i < this.separableBlurMaterials.length; i++) {
-      this.separableBlurMaterials[i].dispose();
-    }
-    this.compositeMaterial.dispose();
-    this.blendMaterial.dispose();
-    this._basic.dispose();
-    this._fsQuad.dispose();
-  }
-  /**
-   * Sets the size of the pass.
-   *
-   * @param {number} width - The width to set.
-   * @param {number} height - The height to set.
-   */
-  setSize(width, height) {
-    let resx = Math.round(width / 2);
-    let resy = Math.round(height / 2);
-    this.renderTargetBright.setSize(resx, resy);
-    for (let i = 0; i < this.nMips; i++) {
-      this.renderTargetsHorizontal[i].setSize(resx, resy);
-      this.renderTargetsVertical[i].setSize(resx, resy);
-      this.separableBlurMaterials[i].uniforms["invSize"].value = new Vector2(1 / resx, 1 / resy);
-      resx = Math.round(resx / 2);
-      resy = Math.round(resy / 2);
-    }
-  }
-  /**
-   * Performs the Bloom pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
-    renderer.getClearColor(this._oldClearColor);
-    this._oldClearAlpha = renderer.getClearAlpha();
-    const oldAutoClear = renderer.autoClear;
-    renderer.autoClear = false;
-    renderer.setClearColor(this.clearColor, 0);
-    if (maskActive) renderer.state.buffers.stencil.setTest(false);
-    if (this.renderToScreen) {
-      this._fsQuad.material = this._basic;
-      this._basic.map = readBuffer.texture;
-      renderer.setRenderTarget(null);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-    }
-    this.highPassUniforms["tDiffuse"].value = readBuffer.texture;
-    this.highPassUniforms["luminosityThreshold"].value = this.threshold;
-    this._fsQuad.material = this.materialHighPassFilter;
-    renderer.setRenderTarget(this.renderTargetBright);
-    renderer.clear();
-    this._fsQuad.render(renderer);
-    let inputRenderTarget = this.renderTargetBright;
-    for (let i = 0; i < this.nMips; i++) {
-      this._fsQuad.material = this.separableBlurMaterials[i];
-      this.separableBlurMaterials[i].uniforms["colorTexture"].value = inputRenderTarget.texture;
-      this.separableBlurMaterials[i].uniforms["direction"].value = _UnrealBloomPass.BlurDirectionX;
-      renderer.setRenderTarget(this.renderTargetsHorizontal[i]);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-      this.separableBlurMaterials[i].uniforms["colorTexture"].value = this.renderTargetsHorizontal[i].texture;
-      this.separableBlurMaterials[i].uniforms["direction"].value = _UnrealBloomPass.BlurDirectionY;
-      renderer.setRenderTarget(this.renderTargetsVertical[i]);
-      renderer.clear();
-      this._fsQuad.render(renderer);
-      inputRenderTarget = this.renderTargetsVertical[i];
-    }
-    this._fsQuad.material = this.compositeMaterial;
-    this.compositeMaterial.uniforms["bloomStrength"].value = this.strength;
-    this.compositeMaterial.uniforms["bloomRadius"].value = this.radius;
-    this.compositeMaterial.uniforms["bloomTintColors"].value = this.bloomTintColors;
-    renderer.setRenderTarget(this.renderTargetsHorizontal[0]);
-    renderer.clear();
-    this._fsQuad.render(renderer);
-    this._fsQuad.material = this.blendMaterial;
-    this.copyUniforms["tDiffuse"].value = this.renderTargetsHorizontal[0].texture;
-    if (maskActive) renderer.state.buffers.stencil.setTest(true);
-    if (this.renderToScreen) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(readBuffer);
-      this._fsQuad.render(renderer);
-    }
-    renderer.setClearColor(this._oldClearColor, this._oldClearAlpha);
-    renderer.autoClear = oldAutoClear;
-  }
-  // internals
-  _getSeparableBlurMaterial(kernelRadius) {
-    const coefficients = [];
-    const sigma = kernelRadius / 3;
-    for (let i = 0; i < kernelRadius; i++) {
-      coefficients.push(0.39894 * Math.exp(-0.5 * i * i / (sigma * sigma)) / sigma);
-    }
-    return new ShaderMaterial({
-      defines: {
-        "KERNEL_RADIUS": kernelRadius
-      },
-      uniforms: {
-        "colorTexture": { value: null },
-        "invSize": { value: new Vector2(0.5, 0.5) },
-        // inverse texture size
-        "direction": { value: new Vector2(0.5, 0.5) },
-        "gaussianCoefficients": { value: coefficients }
-        // precomputed Gaussian coefficients
-      },
-      vertexShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				void main() {
-
-					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-				}`
-      ),
-      fragmentShader: (
-        /* glsl */
-        `
-
-				#include <common>
-
-				varying vec2 vUv;
-
-				uniform sampler2D colorTexture;
-				uniform vec2 invSize;
-				uniform vec2 direction;
-				uniform float gaussianCoefficients[KERNEL_RADIUS];
-
-				void main() {
-
-					float weightSum = gaussianCoefficients[0];
-					vec3 diffuseSum = texture2D( colorTexture, vUv ).rgb * weightSum;
-
-					for ( int i = 1; i < KERNEL_RADIUS; i ++ ) {
-
-						float x = float( i );
-						float w = gaussianCoefficients[i];
-						vec2 uvOffset = direction * invSize * x;
-						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset ).rgb;
-						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset ).rgb;
-						diffuseSum += ( sample1 + sample2 ) * w;
-
-					}
-
-					gl_FragColor = vec4( diffuseSum, 1.0 );
-
-				}`
-      )
-    });
-  }
-  _getCompositeMaterial(nMips) {
-    return new ShaderMaterial({
-      defines: {
-        "NUM_MIPS": nMips
-      },
-      uniforms: {
-        "blurTexture1": { value: null },
-        "blurTexture2": { value: null },
-        "blurTexture3": { value: null },
-        "blurTexture4": { value: null },
-        "blurTexture5": { value: null },
-        "bloomStrength": { value: 1 },
-        "bloomFactors": { value: null },
-        "bloomTintColors": { value: null },
-        "bloomRadius": { value: 0 }
-      },
-      vertexShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				void main() {
-
-					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-				}`
-      ),
-      fragmentShader: (
-        /* glsl */
-        `
-
-				varying vec2 vUv;
-
-				uniform sampler2D blurTexture1;
-				uniform sampler2D blurTexture2;
-				uniform sampler2D blurTexture3;
-				uniform sampler2D blurTexture4;
-				uniform sampler2D blurTexture5;
-				uniform float bloomStrength;
-				uniform float bloomRadius;
-				uniform float bloomFactors[NUM_MIPS];
-				uniform vec3 bloomTintColors[NUM_MIPS];
-
-				float lerpBloomFactor( const in float factor ) {
-
-					float mirrorFactor = 1.2 - factor;
-					return mix( factor, mirrorFactor, bloomRadius );
-
-				}
-
-				void main() {
-
-					// 3.0 for backwards compatibility with previous alpha-based intensity
-					vec3 bloom = 3.0 * bloomStrength * (
-						lerpBloomFactor( bloomFactors[ 0 ] ) * bloomTintColors[ 0 ] * texture2D( blurTexture1, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 1 ] ) * bloomTintColors[ 1 ] * texture2D( blurTexture2, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 2 ] ) * bloomTintColors[ 2 ] * texture2D( blurTexture3, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 3 ] ) * bloomTintColors[ 3 ] * texture2D( blurTexture4, vUv ).rgb +
-						lerpBloomFactor( bloomFactors[ 4 ] ) * bloomTintColors[ 4 ] * texture2D( blurTexture5, vUv ).rgb
-					);
-
-					float bloomAlpha = max( bloom.r, max( bloom.g, bloom.b ) );
-					gl_FragColor = vec4( bloom, bloomAlpha );
-
-				}`
-      )
-    });
-  }
-};
-UnrealBloomPass.BlurDirectionX = new Vector2(1, 0);
-UnrealBloomPass.BlurDirectionY = new Vector2(0, 1);
-
-// node_modules/three/examples/jsm/shaders/OutputShader.js
-var OutputShader = {
-  name: "OutputShader",
-  uniforms: {
-    "tDiffuse": { value: null },
-    "toneMappingExposure": { value: 1 }
-  },
-  vertexShader: (
-    /* glsl */
-    `
-		precision highp float;
-
-		uniform mat4 modelViewMatrix;
-		uniform mat4 projectionMatrix;
-
-		attribute vec3 position;
-		attribute vec2 uv;
-
-		varying vec2 vUv;
-
-		void main() {
-
-			vUv = uv;
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-  ),
-  fragmentShader: (
-    /* glsl */
-    `
-
-		precision highp float;
-
-		uniform sampler2D tDiffuse;
-
-		#include <tonemapping_pars_fragment>
-		#include <colorspace_pars_fragment>
-
-		varying vec2 vUv;
-
-		void main() {
-
-			gl_FragColor = texture2D( tDiffuse, vUv );
-
-			// tone mapping
-
-			#ifdef LINEAR_TONE_MAPPING
-
-				gl_FragColor.rgb = LinearToneMapping( gl_FragColor.rgb );
-
-			#elif defined( REINHARD_TONE_MAPPING )
-
-				gl_FragColor.rgb = ReinhardToneMapping( gl_FragColor.rgb );
-
-			#elif defined( CINEON_TONE_MAPPING )
-
-				gl_FragColor.rgb = CineonToneMapping( gl_FragColor.rgb );
-
-			#elif defined( ACES_FILMIC_TONE_MAPPING )
-
-				gl_FragColor.rgb = ACESFilmicToneMapping( gl_FragColor.rgb );
-
-			#elif defined( AGX_TONE_MAPPING )
-
-				gl_FragColor.rgb = AgXToneMapping( gl_FragColor.rgb );
-
-			#elif defined( NEUTRAL_TONE_MAPPING )
-
-				gl_FragColor.rgb = NeutralToneMapping( gl_FragColor.rgb );
-
-			#elif defined( CUSTOM_TONE_MAPPING )
-
-				gl_FragColor.rgb = CustomToneMapping( gl_FragColor.rgb );
-
-			#endif
-
-			// color space
-
-			#ifdef SRGB_TRANSFER
-
-				gl_FragColor = sRGBTransferOETF( gl_FragColor );
-
-			#endif
-
-		}`
-  )
-};
-
-// node_modules/three/examples/jsm/postprocessing/OutputPass.js
-var OutputPass = class extends Pass {
-  /**
-   * Constructs a new output pass.
-   */
-  constructor() {
-    super();
-    this.isOutputPass = true;
-    this.uniforms = UniformsUtils.clone(OutputShader.uniforms);
-    this.material = new RawShaderMaterial({
-      name: OutputShader.name,
-      uniforms: this.uniforms,
-      vertexShader: OutputShader.vertexShader,
-      fragmentShader: OutputShader.fragmentShader
-    });
-    this._fsQuad = new FullScreenQuad(this.material);
-    this._outputColorSpace = null;
-    this._toneMapping = null;
-  }
-  /**
-   * Performs the output pass.
-   *
-   * @param {WebGLRenderer} renderer - The renderer.
-   * @param {WebGLRenderTarget} writeBuffer - The write buffer. This buffer is intended as the rendering
-   * destination for the pass.
-   * @param {WebGLRenderTarget} readBuffer - The read buffer. The pass can access the result from the
-   * previous pass from this buffer.
-   * @param {number} deltaTime - The delta time in seconds.
-   * @param {boolean} maskActive - Whether masking is active or not.
-   */
-  render(renderer, writeBuffer, readBuffer) {
-    this.uniforms["tDiffuse"].value = readBuffer.texture;
-    this.uniforms["toneMappingExposure"].value = renderer.toneMappingExposure;
-    if (this._outputColorSpace !== renderer.outputColorSpace || this._toneMapping !== renderer.toneMapping) {
-      this._outputColorSpace = renderer.outputColorSpace;
-      this._toneMapping = renderer.toneMapping;
-      this.material.defines = {};
-      if (ColorManagement.getTransfer(this._outputColorSpace) === SRGBTransfer) this.material.defines.SRGB_TRANSFER = "";
-      if (this._toneMapping === LinearToneMapping) this.material.defines.LINEAR_TONE_MAPPING = "";
-      else if (this._toneMapping === ReinhardToneMapping) this.material.defines.REINHARD_TONE_MAPPING = "";
-      else if (this._toneMapping === CineonToneMapping) this.material.defines.CINEON_TONE_MAPPING = "";
-      else if (this._toneMapping === ACESFilmicToneMapping) this.material.defines.ACES_FILMIC_TONE_MAPPING = "";
-      else if (this._toneMapping === AgXToneMapping) this.material.defines.AGX_TONE_MAPPING = "";
-      else if (this._toneMapping === NeutralToneMapping) this.material.defines.NEUTRAL_TONE_MAPPING = "";
-      else if (this._toneMapping === CustomToneMapping) this.material.defines.CUSTOM_TONE_MAPPING = "";
-      this.material.needsUpdate = true;
-    }
-    if (this.renderToScreen === true) {
-      renderer.setRenderTarget(null);
-      this._fsQuad.render(renderer);
-    } else {
-      renderer.setRenderTarget(writeBuffer);
-      if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
-      this._fsQuad.render(renderer);
-    }
-  }
-  /**
-   * Frees the GPU-related resources allocated by this instance. Call this
-   * method whenever the pass is no longer used in your app.
-   */
-  dispose() {
-    this.material.dispose();
-    this._fsQuad.dispose();
-  }
-};
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/types.ts
-var EMPTY_AUDIO = {
+var SILENT_FRAME = {
   amplitude: 0,
   bass: 0,
   mid: 0,
@@ -28759,767 +26845,556 @@ var EMPTY_AUDIO = {
   beat: 0,
   drone: 0
 };
-var DEFAULT_PARAMS = {
-  particleCount: 44e3,
-  particleSize: 2,
-  rotationSpeed: 0.05,
-  gravityStrength: 1,
-  flowStrength: 1,
-  brightness: 0.95,
-  bloomStrength: 0.7,
-  audioReactivity: 1,
-  pointerInfluence: 1,
-  afterglowSeconds: 2.6,
-  // #7ED8B0 bio-green core
-  coreColor: [0.494, 0.847, 0.69],
-  // #E8F0E0 cool-white dust
-  dustColor: [0.909, 0.941, 0.878]
-};
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/audio-mapping.ts
-var AudioReactiveMapping = class {
-  constructor() {
-    this.growth = 0;
-  }
-  reset() {
-    this.growth = 0;
-  }
-  /**
-   * @param audio   current six-channel audio (0..1 each)
-   * @param params  live engine parameters
-   * @param charge  interaction charge 0..1 (hold builds it, release decays it)
-   * @param dt      delta seconds
-   */
-  compute(audio, params, charge, dt) {
-    const a = audio ?? EMPTY_AUDIO;
-    const r = params.audioReactivity;
-    const target = a.drone * r;
-    this.growth += (target - this.growth) * Math.min(1, dt * 0.6);
-    const amp = a.amplitude * r;
-    const bass = a.bass * r;
-    const mid = a.mid * r;
-    const high = a.high * r;
-    const beat = a.beat * r;
-    return {
-      brightness: params.brightness * (0.72 + amp * 0.9 + charge * 0.4),
-      coreScale: 1 + bass * 0.6 + charge * 0.5 + this.growth * 0.25 + beat * 0.18,
-      spin: params.rotationSpeed * (1 + this.growth * 1.6 + mid * 0.5 + charge * 0.4),
-      flow: params.flowStrength * (0.8 + mid * 1.1 + charge * 0.3),
-      gravity: params.gravityStrength * (0.85 + bass * 0.8 + charge * 1.1),
-      sparkle: Math.min(1, high * 1.2 + beat * 0.3),
-      ring: Math.min(1, beat + charge * 0.15),
-      growth: this.growth,
-      bloom: params.bloomStrength * (0.85 + amp * 0.5 + charge * 0.35)
-    };
-  }
-};
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/shaders.ts
-var PARTICLE_VERTEX = (
-  /* glsl */
-  `
-precision highp float;
-
-attribute float aSeed;      // per-particle random 0..1
-attribute float aRadius;    // rest distance from core
-attribute float aSpin;      // per-particle angular offset
-
-uniform float uTime;
-uniform float uSpin;        // accumulated rotation angle
-uniform float uGravity;     // pull toward core
-uniform float uFlow;        // curl-noise intensity
-uniform float uCoreScale;   // core expansion
-uniform float uGrowth;      // sustained growth 0..1
-uniform float uPointer;     // pointer influence strength
-uniform vec3  uPointerPos;  // pointer position in world space
-uniform float uSize;        // base point size
-uniform float uSparkle;     // high-freq flicker 0..1
-uniform float uHeight;      // vertical thickness of the nebula (audio-driven)
-uniform float uPulse;       // bass/beat-driven radial swell 0..1
-uniform float uPixelRatio;
-
-varying float vRadius;
-varying float vGlow;
-varying float vSeed;
-
-// --- simplex-ish 3D noise (Ashima) ---
-vec4 permute(vec4 x){ return mod(((x*34.0)+1.0)*x, 289.0); }
-vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
-float snoise(vec3 v){
-  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-  vec3 i  = floor(v + dot(v, C.yyy));
-  vec3 x0 = v - i + dot(i, C.xxx);
-  vec3 g = step(x0.yzx, x0.xyz);
-  vec3 l = 1.0 - g;
-  vec3 i1 = min(g.xyz, l.zxy);
-  vec3 i2 = max(g.xyz, l.zxy);
-  vec3 x1 = x0 - i1 + C.xxx;
-  vec3 x2 = x0 - i2 + C.yyy;
-  vec3 x3 = x0 - D.yyy;
-  i = mod(i, 289.0);
-  vec4 p = permute(permute(permute(
-      i.z + vec4(0.0, i1.z, i2.z, 1.0))
-    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-  float n_ = 1.0/7.0;
-  vec3 ns = n_ * D.wyz - D.xzx;
-  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_);
-  vec4 x = x_ * ns.x + ns.yyyy;
-  vec4 y = y_ * ns.x + ns.yyyy;
-  vec4 h = 1.0 - abs(x) - abs(y);
-  vec4 b0 = vec4(x.xy, y.xy);
-  vec4 b1 = vec4(x.zw, y.zw);
-  vec4 s0 = floor(b0)*2.0 + 1.0;
-  vec4 s1 = floor(b1)*2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-  vec3 p0 = vec3(a0.xy, h.x);
-  vec3 p1 = vec3(a0.zw, h.y);
-  vec3 p2 = vec3(a1.xy, h.z);
-  vec3 p3 = vec3(a1.zw, h.w);
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-
-vec3 curl(vec3 p){
-  float e = 0.35;
-  float n1 = snoise(p + vec3(0.0, e, 0.0));
-  float n2 = snoise(p - vec3(0.0, e, 0.0));
-  float n3 = snoise(p + vec3(0.0, 0.0, e));
-  float n4 = snoise(p - vec3(0.0, 0.0, e));
-  float n5 = snoise(p + vec3(e, 0.0, 0.0));
-  float n6 = snoise(p - vec3(e, 0.0, 0.0));
-  float x = (n1 - n2) - (n3 - n4);
-  float y = (n3 - n4) - (n5 - n6);
-  float z = (n5 - n6) - (n1 - n2);
-  return normalize(vec3(x, y, z) + 1e-5);
-}
-
-void main(){
-  vSeed = aSeed;
-
-  // Rest position on a disc-shell around the core. Radius swells with the
-  // audio pulse so the whole nebula breathes/expands with the music.
-  float ang = aSpin + uSpin * (0.4 + aSeed * 0.9);
-  float rad = aRadius * (1.0 + uGrowth * 0.5 + uPulse * 0.35);
-  // uHeight raises the nebula: taller vertical spread, also modulated by audio.
-  float yThick = rad * uHeight * (0.7 + snoise(vec3(aSeed * 12.0, uTime * 0.2, 0.0)) * 0.4);
-  vec3 base = vec3(cos(ang) * rad, (aSeed - 0.5) * yThick, sin(ang) * rad);
-
-  // Audio-driven vertical undulation \u2014 the cloud rolls with bass/drone.
-  base.y += sin(ang * 2.0 + uTime * 0.8 + aSeed * 6.28) * uPulse * rad * 0.18;
-
-  // Curl-noise flow drift.
-  vec3 flow = curl(base * 0.12 + vec3(uTime * 0.04, uTime * 0.03, aSeed * 4.0));
-  base += flow * uFlow * (0.6 + aSeed);
-
-  // Gravitational pull toward core (stronger when close).
-  float dist = length(base) + 1e-3;
-  vec3 dir = base / dist;
-  float pull = uGravity * (1.2 / (dist * 0.5 + 1.0));
-  base -= dir * pull * 0.4;
-
-  // Core expansion pushes shells outward on bass/charge.
-  base += dir * (uCoreScale - 1.0) * rad * 0.4;
-
-  // Pointer local disturbance.
-  vec3 toPointer = base - uPointerPos;
-  float pd = length(toPointer);
-  float infl = uPointer * exp(-pd * 0.35) * 2.0;
-  base += normalize(toPointer + 1e-4) * infl;
-
-  vRadius = clamp(dist / 40.0, 0.0, 1.0);
-  // Glow rises toward the core, but the innermost region is pushed DARK so a
-  // constellation can sit at the center without being washed out by dust.
-  float outerGlow = 1.0 - clamp(dist / 54.0, 0.0, 1.0);
-  float centerDim = smoothstep(3.0, 12.0, dist); // 0 at center \u2192 1 outside core
-  vGlow = outerGlow * centerDim;
-
-  vec4 mv = modelViewMatrix * vec4(base, 1.0);
-  float sizeFlicker = 1.0 + uSparkle * (snoise(vec3(aSeed * 30.0, uTime * 6.0, 0.0)) * 0.5);
-  gl_PointSize = uSize * uPixelRatio * sizeFlicker * (1.0 + vGlow * 1.4) * (60.0 / -mv.z);
-  gl_Position = projectionMatrix * mv;
-}
-`
-);
-var PARTICLE_FRAGMENT = (
-  /* glsl */
-  `
-precision highp float;
-
-uniform vec3  uCoreColor;
-uniform vec3  uDustColor;
-uniform float uBrightness;
-uniform float uSparkle;
-
-varying float vRadius;
-varying float vGlow;
-varying float vSeed;
-
-void main(){
-  vec2 uv = gl_PointCoord - 0.5;
-  float d = length(uv);
-  if (d > 0.5) discard;
-
-  // Soft additive falloff \u2014 a glowing dot with a bright core.
-  float alpha = smoothstep(0.5, 0.0, d);
-  float core = smoothstep(0.28, 0.0, d);
-
-  // Tint from bio-green core (near center) to cool-white dust (outer).
-  vec3 col = mix(uCoreColor, uDustColor, smoothstep(0.15, 0.85, vRadius));
-  col += core * 0.35;
-
-  // Occasional bright sparkle on high frequencies.
-  float twinkle = step(0.94, fract(vSeed * 91.7 + uSparkle));
-  col += twinkle * uSparkle * 0.6;
-
-  float intensity = (alpha * 0.3 + core * 0.65) * (0.2 + vGlow * 0.7) * uBrightness;
-  gl_FragColor = vec4(col * intensity, alpha * intensity);
-}
-`
-);
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/particle-system.ts
+// effects/15-supernova-pulse/src/lib/stellar-engine/particle-system.ts
 var ParticleSystem = class {
-  constructor(params, pixelRatio) {
-    this.spinAccum = 0;
-    const count = params.particleCount;
-    const seeds = new Float32Array(count);
-    const radii = new Float32Array(count);
-    const spins = new Float32Array(count);
-    const positions = new Float32Array(count * 3);
+  constructor(count) {
+    this.count = count;
+    this.positions = new Float32Array(count * 3);
+    this.bases = new Float32Array(count * 3);
+    this.seeds = new Float32Array(count);
+    const colors = new Float32Array(count * 3);
+    const star = new Color(STELLAR_PALETTE.star);
+    const cyan = new Color(STELLAR_PALETTE.cyan);
+    const violet = new Color(STELLAR_PALETTE.violet);
     for (let i = 0; i < count; i++) {
-      const seed = Math.random();
-      const r = 3 + Math.pow(Math.random(), 0.8) * 40;
-      const ang = Math.random() * Math.PI * 2;
-      seeds[i] = seed;
-      radii[i] = r;
-      spins[i] = ang;
-      positions[i * 3] = Math.cos(ang) * r;
-      positions[i * 3 + 1] = (seed - 0.5) * r * 0.55;
-      positions[i * 3 + 2] = Math.sin(ang) * r;
+      const r = Math.pow(Math.random(), 0.42) * 9.2;
+      const a = Math.random() * Math.PI * 2;
+      const arm = Math.sin(a * 3 + r * 1.7) * 0.52;
+      const z = (Math.random() - 0.5) * 8.5;
+      const x = Math.cos(a + arm) * r * (0.9 + Math.random() * 0.35);
+      const y = Math.sin(a - arm) * r * (0.58 + Math.random() * 0.28);
+      this.bases[i * 3] = this.positions[i * 3] = x;
+      this.bases[i * 3 + 1] = this.positions[i * 3 + 1] = y;
+      this.bases[i * 3 + 2] = this.positions[i * 3 + 2] = z;
+      this.seeds[i] = Math.random() * 1e3;
+      const mix = Math.random();
+      const c = star.clone().lerp(mix > 0.82 ? violet : cyan, mix > 0.82 ? 0.55 : 0.24);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
     }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    geometry.setAttribute("aSeed", new BufferAttribute(seeds, 1));
-    geometry.setAttribute("aRadius", new BufferAttribute(radii, 1));
-    geometry.setAttribute("aSpin", new BufferAttribute(spins, 1));
-    this.geometry = geometry;
-    this.material = new ShaderMaterial({
-      vertexShader: PARTICLE_VERTEX,
-      fragmentShader: PARTICLE_FRAGMENT,
+    this.geo = new BufferGeometry();
+    this.geo.setAttribute("position", new BufferAttribute(this.positions, 3));
+    this.geo.setAttribute("color", new BufferAttribute(colors, 3));
+    this.mat = new PointsMaterial({
+      size: 0.05,
+      map: makeSoftSprite(),
+      vertexColors: true,
       transparent: true,
-      depthWrite: false,
+      opacity: 0.9,
+      sizeAttenuation: true,
+      alphaTest: 8e-3,
       blending: AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uSpin: { value: 0 },
-        uGravity: { value: params.gravityStrength },
-        uFlow: { value: params.flowStrength },
-        uCoreScale: { value: 1 },
-        uGrowth: { value: 0 },
-        uPointer: { value: 0 },
-        uPointerPos: { value: new Vector3() },
-        uSize: { value: params.particleSize },
-        uSparkle: { value: 0 },
-        uHeight: { value: 0.9 },
-        uPulse: { value: 0 },
-        uBrightness: { value: params.brightness },
-        uPixelRatio: { value: pixelRatio },
-        uCoreColor: { value: new Vector3(...params.coreColor) },
-        uDustColor: { value: new Vector3(...params.dustColor) }
-      }
+      depthWrite: false
     });
-    this.points = new Points(geometry, this.material);
-    this.points.frustumCulled = false;
+    this.points = new Points(this.geo, this.mat);
   }
-  setPixelRatio(pr) {
-    this.material.uniforms.uPixelRatio.value = pr;
-  }
-  applyParams(params) {
-    const u = this.material.uniforms;
-    u.uSize.value = params.particleSize;
-    u.uCoreColor.value.set(...params.coreColor);
-    u.uDustColor.value.set(...params.dustColor);
-  }
-  update(dt, time, drive, pointer, pointerStrength) {
-    const u = this.material.uniforms;
-    this.spinAccum += drive.spin * dt;
-    u.uTime.value = time;
-    u.uSpin.value = this.spinAccum;
-    u.uGravity.value = drive.gravity;
-    u.uFlow.value = drive.flow;
-    u.uCoreScale.value = drive.coreScale;
-    u.uGrowth.value = drive.growth;
-    u.uSparkle.value = drive.sparkle;
-    const pulse = Math.min(1, (drive.coreScale - 1) * 1.2 + drive.ring * 0.5);
-    u.uPulse.value = pulse;
-    u.uHeight.value = 0.9 + drive.growth * 0.5 + pulse * 0.4;
-    u.uBrightness.value = drive.brightness;
-    u.uPointer.value = pointerStrength;
-    u.uPointerPos.value.copy(pointer);
+  /** 每帧更新粒子位置与材质。Advance the particle field one frame. */
+  update(s, p) {
+    const { time: t, audio } = s;
+    const bass = audio.bass;
+    const drone = audio.drone;
+    const high = audio.high;
+    const gather = s.gather * p.gatherStrength - s.pulse * 0.72;
+    const shock = s.pulse * (1 + Math.sin(t * 8) * 0.18);
+    const churn = 1 + audio.mid * p.churnGain * 6;
+    const dtScale = s.dtScale ?? 1;
+    const lerp2 = 1 - Math.pow(1 - 0.34, dtScale);
+    const pos = this.positions;
+    const bases = this.bases;
+    const seeds = this.seeds;
+    for (let i = 0; i < this.count; i++) {
+      const ix = i * 3;
+      const bx = bases[ix];
+      const by = bases[ix + 1];
+      const bz = bases[ix + 2];
+      const rad = Math.sqrt(bx * bx + by * by) + 1e-3;
+      const ang = Math.atan2(by, bx) + t * (p.baseRotation + bass * 0.018) + Math.sin(rad * 1.4 * churn - t * 0.55 + seeds[i]) * 0.06;
+      const corePull = Math.max(
+        0.32,
+        1 - gather * 0.22 + Math.sin(rad * 1.9 - t * 3) * shock * 0.055
+      );
+      const burst = shock * Math.sin(rad * 1.15 - t * 5.2 + seeds[i] * 0.02) * p.burstStrength;
+      const orbit = rad * corePull + burst;
+      const flutter = Math.sin(t * (1.3 + high) + seeds[i]) * 0.02 * (1 + high * p.flickerGain);
+      const tx = Math.cos(ang) * orbit + s.pointerX * (0.16 + bz * 0.018) + flutter;
+      const ty = Math.sin(ang) * orbit * (0.72 + drone * p.droneGain * 0.28) + s.pointerY * (0.14 + bz * 0.016) + Math.cos(t + seeds[i]) * 0.02;
+      const tz = bz + Math.sin(t * 0.42 + rad + seeds[i]) * 0.26 + s.pulse * 0.42;
+      pos[ix] += (tx - pos[ix]) * lerp2;
+      pos[ix + 1] += (ty - pos[ix + 1]) * lerp2;
+      pos[ix + 2] += (tz - pos[ix + 2]) * lerp2;
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.points.rotation.z = s.spin + Math.sin(t * 0.12) * 0.05 + s.pointerX * 0.035;
+    this.points.rotation.x = Math.sin(t * 0.07) * 0.06 + s.pointerY * 0.045;
+    this.mat.size = p.particleSize + audio.amplitude * 0.012 + high * 4e-3 + s.pulse * 8e-3;
+    this.mat.opacity = Math.min(0.96, 0.5 + audio.amplitude * p.brightnessGain + s.pulse * 0.26);
   }
   dispose() {
-    this.geometry.dispose();
-    this.material.dispose();
+    this.geo.dispose();
+    this.mat.map?.dispose();
+    this.mat.dispose();
   }
 };
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/interaction-controller.ts
-var InteractionController = class {
-  constructor() {
-    this.state = {
-      pointer: { x: 0, y: 0 },
-      smoothPointer: { x: 0, y: 0 },
-      charge: 0,
-      isDown: false,
-      tapImpulse: 0,
-      lastTap: { x: 0, y: 0 }
-    };
-    this.el = null;
-    this.downTime = 0;
-    this.holdFired = false;
-    this.holdTimer = null;
-    this.listeners = /* @__PURE__ */ new Set();
-    this.afterglowSeconds = 2.6;
-    this.HOLD_MS = 260;
-    this.handleDown = (e) => {
-      const p = this.toNDC(e);
-      this.state.pointer = p;
-      this.state.isDown = true;
-      this.downTime = performance.now();
-      this.holdFired = false;
-      this.emit("press", p);
-      this.holdTimer = window.setTimeout(() => {
-        if (this.state.isDown) {
-          this.holdFired = true;
-          this.emit("hold", p);
-        }
-      }, this.HOLD_MS);
-    };
-    this.handleMove = (e) => {
-      this.state.pointer = this.toNDC(e);
-    };
-    this.handleLeaveMove = () => {
-    };
-    this.handleUp = (e) => {
-      if (!this.state.isDown) return;
-      const p = this.toNDC(e);
-      const held = performance.now() - this.downTime;
-      if (this.holdTimer) window.clearTimeout(this.holdTimer);
-      this.state.isDown = false;
-      if (held < this.HOLD_MS && !this.holdFired) {
-        this.state.tapImpulse = 1;
-        this.state.lastTap = p;
-        this.emit("tap", p);
-      }
-      this.holdFired = false;
-      this.emit("release", p);
-    };
-  }
-  onGesture(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-  setAfterglowSeconds(s) {
-    this.afterglowSeconds = Math.max(0.2, s);
-  }
-  attach(el) {
-    this.detach();
-    this.el = el;
-    el.addEventListener("pointerdown", this.handleDown);
-    el.addEventListener("pointermove", this.handleMove);
-    window.addEventListener("pointerup", this.handleUp);
-    window.addEventListener("pointercancel", this.handleUp);
-    el.addEventListener("pointerleave", this.handleLeaveMove);
-  }
-  detach() {
-    if (!this.el) return;
-    this.el.removeEventListener("pointerdown", this.handleDown);
-    this.el.removeEventListener("pointermove", this.handleMove);
-    window.removeEventListener("pointerup", this.handleUp);
-    window.removeEventListener("pointercancel", this.handleUp);
-    this.el.removeEventListener("pointerleave", this.handleLeaveMove);
-    if (this.holdTimer) window.clearTimeout(this.holdTimer);
-    this.el = null;
-  }
-  /** Advance charge & impulse envelopes. Call once per frame. */
-  update(dt) {
-    const s = this.state;
-    s.smoothPointer.x += (s.pointer.x - s.smoothPointer.x) * Math.min(1, dt * 6);
-    s.smoothPointer.y += (s.pointer.y - s.smoothPointer.y) * Math.min(1, dt * 6);
-    if (s.isDown && this.holdFired) {
-      s.charge = Math.min(1, s.charge + dt * 0.9);
-    } else {
-      const decay = 1 / this.afterglowSeconds;
-      s.charge = Math.max(0, s.charge - dt * decay);
-    }
-    s.tapImpulse = Math.max(0, s.tapImpulse - dt * 2.4);
-  }
-  // ---- Public gesture API (for programmatic / host-driven interaction) ----
-  tap(point = { x: 0, y: 0 }) {
-    this.state.tapImpulse = 1;
-    this.state.lastTap = point;
-    this.emit("tap", point);
-  }
-  press(point = { x: 0, y: 0 }) {
-    this.state.isDown = true;
-    this.emit("press", point);
-  }
-  hold(point = { x: 0, y: 0 }) {
-    this.holdFired = true;
-    this.emit("hold", point);
-  }
-  release(point = { x: 0, y: 0 }) {
-    this.state.isDown = false;
-    this.holdFired = false;
-    this.emit("release", point);
-  }
-  emit(kind, point) {
-    this.listeners.forEach((fn) => fn(kind, point));
-  }
-  // ---- DOM handlers ----
-  toNDC(e) {
-    const el = this.el;
-    if (!el) return { x: 0, y: 0 };
-    const rect = el.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / rect.width * 2 - 1,
-      y: -((e.clientY - rect.top) / rect.height * 2 - 1)
-    };
-  }
-};
-
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/gravitational-core.ts
-var RIPPLE_LAYERS = 4;
-var RIPPLE_LIFE = 1.8;
-var GravitationalCore = class {
-  constructor(params) {
-    this.group = new Group();
-    this.rings = [];
-    this.ripples = [];
-    this.pendingPulse = 0;
-    this.coreColor = new Color(...params.coreColor);
-    this.coreMat = new SpriteMaterial({
-      map: makeHaloTexture(),
-      color: this.coreColor,
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      opacity: 0.22
-    });
-    this.coreSprite = new Sprite(this.coreMat);
-    this.coreSprite.scale.setScalar(7);
-    this.group.add(this.coreSprite);
-    this.ellipseGeo = makeEllipseGeometry(1, 0.62, 160);
-    const r1 = this.makeRing(14, 0.16);
-    const r2 = this.makeRing(9, 0.12);
-    this.rings.push(r1, r2);
-    this.group.add(r1, r2);
-  }
-  makeRing(radius, opacity) {
-    const mat = new LineBasicMaterial({
-      color: this.coreColor,
-      transparent: true,
-      opacity,
-      depthWrite: false,
-      blending: AdditiveBlending
-    });
-    const line = new Line(this.ellipseGeo, mat);
-    line.scale.setScalar(radius);
-    line.rotation.x = -Math.PI * 0.5;
-    return line;
-  }
-  applyParams(params) {
-    this.coreColor.set(...params.coreColor);
-    this.coreMat.color.copy(this.coreColor);
-    this.rings.forEach(
-      (r) => r.material.color.copy(this.coreColor)
-    );
-  }
-  /** Trigger a ripple (called by tap / strong beats). */
-  pulse(strength) {
-    this.pendingPulse = Math.max(this.pendingPulse, strength);
-  }
-  update(dt, t, drive, tapImpulse) {
-    const scale = 7 * (1 + drive.coreScale * 0.06) * (1 + Math.sin(t * 1.2) * 0.03);
-    this.coreSprite.scale.setScalar(scale);
-    this.coreMat.opacity = Math.min(0.3, 0.14 + drive.brightness * 0.1);
-    this.rings[0].rotation.z += drive.spin * dt * 0.8;
-    this.rings[1].rotation.z -= drive.spin * dt * 1.1;
-    this.rings.forEach((r) => {
-      const m = r.material;
-      m.opacity = 0.1 + drive.growth * 0.16;
-    });
-    if (drive.ring > 0.55 || this.pendingPulse > 0 || tapImpulse > 0.6) {
-      this.spawnRipple(Math.max(drive.ring, this.pendingPulse, tapImpulse));
-      this.pendingPulse = 0;
-    }
-    for (let i = this.ripples.length - 1; i >= 0; i--) {
-      const rip = this.ripples[i];
-      rip.life -= dt;
-      const p = 1 - rip.life / RIPPLE_LIFE;
-      const eased = 1 - Math.pow(1 - p, 2.2);
-      rip.lines.forEach((line, layer) => {
-        const layerP = Math.max(0, eased - layer * 0.09);
-        const scale2 = 2 + layerP * 64;
-        line.scale.setScalar(scale2);
-        rip.mats[layer].opacity = Math.max(0, (1 - p) * (1 - layer * 0.16)) * 0.5 * rip.strength;
-      });
-      if (rip.life <= 0) {
-        rip.lines.forEach((line, layer) => {
-          this.group.remove(line);
-          rip.mats[layer].dispose();
-        });
-        this.ripples.splice(i, 1);
-      }
-    }
-  }
-  spawnRipple(strength) {
-    if (this.ripples.length > 5) return;
-    const lines = [];
-    const mats = [];
-    for (let layer = 0; layer < RIPPLE_LAYERS; layer++) {
-      const mat = new LineBasicMaterial({
-        // Cool white ellipse outlines (not the green core color).
-        color: 15922928,
-        transparent: true,
-        opacity: 0,
-        depthWrite: false,
-        blending: AdditiveBlending
-      });
-      const line = new Line(this.ellipseGeo, mat);
-      line.rotation.x = -Math.PI * 0.5;
-      line.scale.setScalar(1.2);
-      this.group.add(line);
-      lines.push(line);
-      mats.push(mat);
-    }
-    this.ripples.push({ lines, mats, life: RIPPLE_LIFE, strength });
-  }
-  dispose() {
-    this.coreMat.map?.dispose();
-    this.coreMat.dispose();
-    this.rings.forEach((r) => r.material.dispose());
-    this.ellipseGeo.dispose();
-    this.ripples.forEach((rip) => rip.mats.forEach((m) => m.dispose()));
-  }
-};
-function makeEllipseGeometry(rx, ry, segments) {
-  const pts = [];
-  for (let i = 0; i <= segments; i++) {
-    const a = i / segments * Math.PI * 2;
-    pts.push(new Vector3(Math.cos(a) * rx, Math.sin(a) * ry, 0));
-  }
-  return new BufferGeometry().setFromPoints(pts);
-}
-function makeHaloTexture() {
-  const size = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(
-    size / 2,
-    size / 2,
-    0,
-    size / 2,
-    size / 2,
-    size / 2
-  );
-  g.addColorStop(0, "rgba(232,240,224,0.5)");
-  g.addColorStop(0.35, "rgba(126,216,176,0.2)");
-  g.addColorStop(1, "rgba(126,216,176,0)");
+function makeSoftSprite() {
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.85)");
+  g.addColorStop(0.55, "rgba(255,255,255,0.28)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
-  const tex = new CanvasTexture(c);
+  const tex = new CanvasTexture(canvas);
   tex.needsUpdate = true;
   return tex;
 }
 
-// effects/11-audio-reactive-cosmos/src/lib/stellar-synth/stellar-scene.ts
-var StellarSynthScene = class {
-  constructor(opts = {}) {
-    this.interaction = new InteractionController();
-    this.mapping = new AudioReactiveMapping();
-    this.renderer = null;
-    this.composer = null;
-    this.bloomPass = null;
-    this.scene = new Scene();
-    this.camera = new PerspectiveCamera(52, 1, 0.1, 400);
-    this.particles = null;
-    this.core = null;
-    this.canvas = null;
-    this.audio = null;
-    this.rafId = null;
-    this.clock = new Clock();
-    this.running = false;
-    this.resizeObserver = null;
-    this.pointerWorld = new Vector3();
-    this.lastDrive = null;
-    this.params = { ...DEFAULT_PARAMS, ...opts.params };
-    this.maxPixelRatio = opts.maxPixelRatio ?? 2;
-    this.autoStart = opts.autoStart ?? true;
-    this.interaction.setAfterglowSeconds(this.params.afterglowSeconds);
-  }
-  /** Attach the engine to a canvas and build the scene. */
-  mount(canvas) {
-    this.canvas = canvas;
-    const renderer = new WebGLRenderer({
-      canvas,
-      antialias: false,
-      alpha: false,
-      powerPreference: "high-performance"
+// effects/15-supernova-pulse/src/lib/stellar-engine/core-field.ts
+var MAX_RINGS = 6;
+var CoreField = class {
+  constructor() {
+    this.rings = [];
+    this.ringCursor = 0;
+    this.group = new Group();
+    const coreGeo = new RingGeometry(1.15, 1.22, 180);
+    this.coreMat = new MeshBasicMaterial({
+      color: STELLAR_PALETTE.cyan,
+      transparent: true,
+      opacity: 0.38,
+      blending: AdditiveBlending,
+      side: DoubleSide
     });
-    renderer.setClearColor(526857, 1);
-    renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.9;
-    const pr = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
-    renderer.setPixelRatio(pr);
-    this.renderer = renderer;
-    this.scene.background = new Color(526857);
-    this.camera.position.set(0, 7, 58);
-    this.camera.lookAt(0, 0, 0);
-    this.particles = new ParticleSystem(this.params, pr);
-    this.scene.add(this.particles.points);
-    this.core = new GravitationalCore(this.params);
-    this.scene.add(this.core.group);
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(this.scene, this.camera));
-    const bloom = new UnrealBloomPass(
-      new Vector2(1, 1),
-      this.params.bloomStrength,
-      0.6,
-      0.72
-    );
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-    this.composer = composer;
-    this.bloomPass = bloom;
-    this.interaction.attach(canvas);
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(canvas);
-    this.resize();
-    if (this.autoStart) this.start();
-  }
-  start() {
-    if (this.running || !this.renderer) return;
-    this.running = true;
-    this.clock.getDelta();
-    const tick = () => {
-      if (!this.running) return;
-      this.rafId = requestAnimationFrame(tick);
-      this.frame();
-    };
-    this.rafId = requestAnimationFrame(tick);
-  }
-  stop() {
-    this.running = false;
-    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
-    this.rafId = null;
-  }
-  /** Push external audio analysis (0..1 channels). No source required. */
-  setAudioData(data) {
-    if (!data) {
-      this.audio = null;
-      return;
+    this.core = new Mesh(coreGeo, this.coreMat);
+    this.group.add(this.core);
+    for (let i = 0; i < MAX_RINGS; i++) {
+      const g = new RingGeometry(1, 1.06, 120);
+      const m = new MeshBasicMaterial({
+        color: STELLAR_PALETTE.blue,
+        transparent: true,
+        opacity: 0,
+        blending: AdditiveBlending,
+        side: DoubleSide
+      });
+      const mesh = new Mesh(g, m);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.rings.push({ mesh, mat: m, life: 0, active: false });
     }
-    this.audio = {
-      amplitude: data.amplitude ?? 0,
-      bass: data.bass ?? 0,
-      mid: data.mid ?? 0,
-      high: data.high ?? 0,
-      beat: data.beat ?? 0,
-      drone: data.drone ?? 0
-    };
   }
-  /** Retune the look at runtime. */
-  setParams(partial) {
-    this.params = { ...this.params, ...partial };
-    this.interaction.setAfterglowSeconds(this.params.afterglowSeconds);
-    this.particles?.applyParams(this.params);
-    this.core?.applyParams(this.params);
+  /** 触发一圈冲击波(beat / release 调用)。Emit a shockwave ring. */
+  emitRing() {
+    const ring = this.rings[this.ringCursor];
+    this.ringCursor = (this.ringCursor + 1) % MAX_RINGS;
+    ring.life = 1;
+    ring.active = true;
+    ring.mesh.visible = true;
+    ring.mesh.scale.setScalar(0.3);
   }
-  getParams() {
-    return { ...this.params };
-  }
-  // ---- Interaction passthrough (for host-driven playing systems) ----
-  tap(point) {
-    this.interaction.tap(point);
-    this.core?.pulse(0.6);
-  }
-  press(point) {
-    this.interaction.press(point);
-  }
-  hold(point) {
-    this.interaction.hold(point);
-  }
-  release(point) {
-    this.interaction.release(point);
-  }
-  onGesture(fn) {
-    return this.interaction.onGesture(fn);
-  }
-  /** Latest resolved drive — handy for a host HUD/meters. */
-  getDrive() {
-    return this.lastDrive;
-  }
-  resize() {
-    if (!this.renderer || !this.composer || !this.canvas) return;
-    const w = this.canvas.clientWidth || window.innerWidth;
-    const h = this.canvas.clientHeight || window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
-    this.renderer.setPixelRatio(pr);
-    this.renderer.setSize(w, h, false);
-    this.composer.setPixelRatio(pr);
-    this.composer.setSize(w, h);
-    this.bloomPass?.setSize(w * pr, h * pr);
-    this.particles?.setPixelRatio(pr);
-    this.camera.aspect = w / Math.max(1, h);
-    this.camera.updateProjectionMatrix();
+  update(t, audio, gather, pulse, p) {
+    this.core.scale.setScalar(
+      1 + audio.bass * p.coreExpandGain + gather * 0.55 + pulse * 0.5
+    );
+    this.core.rotation.z = -t * (0.18 + audio.drone * 0.14 * p.droneGain * 5);
+    this.coreMat.opacity = 0.15 + audio.bass * 0.22 + pulse * 0.2;
+    for (const ring of this.rings) {
+      if (!ring.active) continue;
+      ring.life -= 0.018;
+      if (ring.life <= 0) {
+        ring.active = false;
+        ring.mesh.visible = false;
+        ring.mat.opacity = 0;
+        continue;
+      }
+      const scale = 0.3 + (1 - ring.life) * 5.4;
+      ring.mesh.scale.setScalar(scale);
+      ring.mat.opacity = ring.life * 0.45;
+    }
   }
   dispose() {
-    this.stop();
-    this.interaction.detach();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.particles?.dispose();
-    this.core?.dispose();
-    this.composer?.dispose();
-    this.renderer?.dispose();
-    this.scene.clear();
-    this.renderer = null;
-    this.composer = null;
-    this.canvas = null;
-  }
-  frame() {
-    const dt = Math.min(0.05, this.clock.getDelta());
-    const t = this.clock.elapsedTime;
-    this.interaction.update(dt);
-    const s = this.interaction.state;
-    const drive = this.mapping.compute(this.audio, this.params, s.charge, dt);
-    this.lastDrive = drive;
-    const px = s.smoothPointer.x;
-    const py = s.smoothPointer.y;
-    this.camera.position.x += (px * 8 - this.camera.position.x) * dt * 1.6;
-    this.camera.position.y += (7 + py * 5 - this.camera.position.y) * dt * 1.6;
-    this.camera.lookAt(0, 0, 0);
-    this.pointerWorld.set(px * 22, py * 14, 0);
-    const pointerStrength = (s.isDown ? 1 : 0.35) * this.params.pointerInfluence + s.tapImpulse;
-    this.particles?.update(dt, t, drive, this.pointerWorld, pointerStrength);
-    this.core?.update(dt, t, drive, s.tapImpulse);
-    if (this.bloomPass) this.bloomPass.strength = drive.bloom;
-    this.composer?.render();
+    this.coreMat.dispose();
+    this.core.geometry.dispose();
+    for (const ring of this.rings) {
+      ring.mat.dispose();
+      ring.mesh.geometry.dispose();
+    }
   }
 };
+
+// effects/15-supernova-pulse/src/lib/stellar-engine/interaction-controller.ts
+var HOLD_THRESHOLD_MS = 180;
+var InteractionController = class {
+  constructor(handler) {
+    this.el = null;
+    this.pressed = false;
+    this.pressStart = 0;
+    this.holdFired = false;
+    this.lastX = 0;
+    this.lastY = 0;
+    this.onMove = (e) => {
+      this.handler("pointer", this.ndc(e));
+      if (this.pressed && !this.holdFired && performance.now() - this.pressStart > HOLD_THRESHOLD_MS) {
+        this.holdFired = true;
+        this.handler("hold", { x: this.lastX, y: this.lastY, power: 1 });
+      }
+    };
+    this.onDown = (e) => {
+      const payload = this.ndc(e);
+      this.pressed = true;
+      this.pressStart = performance.now();
+      this.holdFired = false;
+      this.handler("press", { ...payload, power: 0.55 });
+      window.setTimeout(() => {
+        if (this.pressed && !this.holdFired) {
+          this.holdFired = true;
+          this.handler("hold", { x: this.lastX, y: this.lastY, power: 1 });
+        }
+      }, HOLD_THRESHOLD_MS);
+    };
+    this.onUp = () => {
+      if (!this.pressed) return;
+      const held = performance.now() - this.pressStart;
+      this.pressed = false;
+      if (held < HOLD_THRESHOLD_MS) {
+        this.handler("tap", { x: this.lastX, y: this.lastY, power: 1.2 });
+      } else {
+        this.handler("release", { x: this.lastX, y: this.lastY, power: 1.15 });
+      }
+      this.holdFired = false;
+    };
+    this.handler = handler;
+  }
+  /** 绑定到一个 DOM 元素。Bind pointer listeners to a host element. */
+  attach(el) {
+    this.detach();
+    this.el = el;
+    el.addEventListener("pointermove", this.onMove, { passive: true });
+    el.addEventListener("pointerdown", this.onDown, { passive: true });
+    window.addEventListener("pointerup", this.onUp, { passive: true });
+  }
+  detach() {
+    if (this.el) {
+      this.el.removeEventListener("pointermove", this.onMove);
+      this.el.removeEventListener("pointerdown", this.onDown);
+      this.el = null;
+    }
+    window.removeEventListener("pointerup", this.onUp);
+  }
+  /** 是否处于按住状态,供渲染循环判定持续聚能。 */
+  get isPressed() {
+    return this.pressed;
+  }
+  ndc(e) {
+    if (!this.el) return { x: 0, y: 0 };
+    const r = this.el.getBoundingClientRect();
+    this.lastX = ((e.clientX - r.left) / r.width - 0.5) * 2;
+    this.lastY = -(((e.clientY - r.top) / r.height - 0.5) * 2);
+    return { x: this.lastX, y: this.lastY };
+  }
+};
+
+// effects/15-supernova-pulse/src/lib/stellar-engine/audio-reactive-mapping.ts
+var ENVELOPES = {
+  amplitude: { attack: 0.28, release: 0.06 },
+  bass: { attack: 0.22, release: 0.05 },
+  mid: { attack: 0.35, release: 0.12 },
+  high: { attack: 0.55, release: 0.2 },
+  beat: { attack: 0.9, release: 0.18 },
+  // beat 是脉冲:快上快下
+  drone: { attack: 0.05, release: 0.02 }
+  // drone 是持续张力:极慢
+};
+var CHANNELS = [
+  "amplitude",
+  "bass",
+  "mid",
+  "high",
+  "beat",
+  "drone"
+];
+var AudioReactiveMapping = class {
+  constructor() {
+    /** 当前平滑后的信号帧,供渲染循环读取。 */
+    this.smoothed = { ...SILENT_FRAME };
+    this.target = { ...SILENT_FRAME };
+  }
+  /** 宿主/音频源每帧推入的原始目标值。 */
+  setTarget(frame) {
+    for (const ch of CHANNELS) {
+      if (typeof frame[ch] === "number") {
+        this.target[ch] = clamp012(frame[ch]);
+      }
+    }
+  }
+  /**
+   * 按包络推进平滑值。每帧调用一次。
+   * `dtScale` 让插值与帧率解耦(60fps ≈ 1.0),掉帧时也保持一致的手感。
+   */
+  update(dtScale = 1) {
+    for (const ch of CHANNELS) {
+      const env = ENVELOPES[ch];
+      const t = this.target[ch];
+      const cur = this.smoothed[ch];
+      const rate = (t > cur ? env.attack : env.release) * dtScale;
+      this.smoothed[ch] = cur + (t - cur) * Math.min(1, rate);
+    }
+  }
+  reset() {
+    for (const ch of CHANNELS) {
+      this.smoothed[ch] = 0;
+      this.target[ch] = 0;
+    }
+  }
+};
+function clamp012(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+// effects/15-supernova-pulse/src/lib/stellar-engine/stellar-engine.ts
+var StellarEngine = class {
+  constructor(opts) {
+    this.audioMap = new AudioReactiveMapping();
+    this.audioSource = null;
+    this.raf = 0;
+    this.lastTs = 0;
+    this.running = false;
+    this.reduced = false;
+    // 动态状态
+    this.time = 0;
+    this.gather = 0;
+    this.pulse = 0;
+    this.pointerX = 0;
+    this.pointerY = 0;
+    this.beatCooldown = 0;
+    this.spin = 0;
+    this.resizeObserver = null;
+    /** 手动触发一次 resize(通常自动)。 */
+    this.resize = () => {
+      const w = this.container.clientWidth || 1;
+      const h = this.container.clientHeight || 1;
+      this.renderer.setSize(w, h, false);
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    };
+    // ---- 内部 / Internal ------------------------------------------------
+    this.onInteraction = (type, payload) => {
+      switch (type) {
+        case "pointer":
+          this.pointerX = payload.x ?? this.pointerX;
+          this.pointerY = payload.y ?? this.pointerY;
+          break;
+        case "press":
+        case "tap":
+          this.pulse = Math.max(this.pulse, payload.power ?? 1);
+          this.coreField.emitRing();
+          break;
+        case "hold":
+          this.gather = Math.max(this.gather, 0.15);
+          break;
+        case "release":
+          this.pulse = Math.max(this.pulse, (payload.power ?? 1) + this.gather);
+          this.coreField.emitRing();
+          break;
+      }
+    };
+    this.onVisibility = () => {
+      if (document.hidden) {
+        this.pulse = 0;
+      } else {
+        this.lastTs = performance.now();
+      }
+    };
+    this.loop = (now) => {
+      if (!this.running) return;
+      this.raf = requestAnimationFrame(this.loop);
+      const dt = Math.min(0.05, (now - this.lastTs) * 1e-3);
+      this.lastTs = now;
+      const dtScale = dt * 60;
+      this.time += dt;
+      const t = this.time;
+      if (this.audioSource) this.audioMap.setTarget(this.audioSource.getFrame());
+      this.audioMap.update(dtScale);
+      const audio = this.audioMap.smoothed;
+      this.beatCooldown -= dt;
+      if (audio.beat > 0.6 && this.beatCooldown <= 0 && !this.reduced) {
+        this.coreField.emitRing();
+        this.beatCooldown = 0.18;
+      }
+      const holding = this.interaction.isPressed ? 1 : 0;
+      this.gather += (holding - this.gather) * 0.045 * dtScale;
+      this.pulse *= Math.pow(this.params.afterglowDecay, dtScale);
+      this.spin += dt * (this.params.spinSpeed + audio.drone * 0.05 + this.gather * 0.08);
+      this.particles.update(
+        {
+          time: t,
+          gather: this.gather,
+          pulse: this.pulse,
+          pointerX: this.pointerX,
+          pointerY: this.pointerY,
+          audio,
+          spin: this.spin,
+          dtScale
+        },
+        this.params
+      );
+      this.coreField.update(t, audio, this.gather, this.pulse, this.params);
+      const par = this.params.parallax;
+      this.camera.position.x += (this.pointerX * par - this.camera.position.x) * 0.035 * dtScale;
+      this.camera.position.y += (this.pointerY * par * 0.66 - this.camera.position.y) * 0.035 * dtScale;
+      this.camera.lookAt(0, 0, 0);
+      this.renderer.render(this.scene, this.camera);
+    };
+    this.container = opts.container;
+    this.params = { ...DEFAULT_PARAMS, ...opts.params };
+    this.reduced = this.params.respectReducedMotion && typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.canvas = document.createElement("canvas");
+    this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
+    this.container.appendChild(this.canvas);
+    this.renderer = new WebGLRenderer({
+      canvas: this.canvas,
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance"
+    });
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, this.params.maxPixelRatio)
+    );
+    this.scene = new Scene();
+    this.camera = new PerspectiveCamera(58, 1, 0.1, 120);
+    this.camera.position.z = 16;
+    const count = this.reduced ? Math.min(this.params.particleCount, 18e3) : this.params.particleCount;
+    this.particles = new ParticleSystem(count);
+    this.coreField = new CoreField();
+    this.scene.add(this.particles.points);
+    this.scene.add(this.coreField.group);
+    this.interaction = new InteractionController(this.onInteraction);
+    this.interaction.attach(this.container);
+    if (opts.audioSource) this.setAudioSource(opts.audioSource);
+    this.resize();
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this.container);
+    window.addEventListener("resize", this.resize, { passive: true });
+    document.addEventListener("visibilitychange", this.onVisibility);
+  }
+  // ---- 公开接口 / Public API ------------------------------------------
+  /** 启动 animation loop。 */
+  start() {
+    if (this.running) return;
+    this.running = true;
+    this.lastTs = performance.now();
+    void this.audioSource?.start?.();
+    this.raf = requestAnimationFrame(this.loop);
+  }
+  /** 暂停 animation loop(不销毁资源)。 */
+  stop() {
+    this.running = false;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+  }
+  /** 设置音频源;引擎每帧自动 getFrame()。 */
+  setAudioSource(source) {
+    this.audioSource?.stop?.();
+    this.audioSource = source;
+    if (this.running) void source?.start?.();
+  }
+  /** 宿主每帧直接推入一帧音频(与 setAudioSource 二选一)。 */
+  setAudioFrame(frame) {
+    this.audioMap.setTarget(frame);
+  }
+  /** 宿主演奏系统触发语义交互;等价于真实指针事件。 */
+  triggerInteraction(type, payload = {}) {
+    this.onInteraction(type, payload);
+  }
+  /** 运行时部分覆盖参数。 */
+  setParams(partial) {
+    Object.assign(this.params, partial);
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, this.params.maxPixelRatio)
+    );
+  }
+  /** 销毁:停止循环、解绑事件、释放 GPU 资源。 */
+  destroy() {
+    this.stop();
+    this.interaction.detach();
+    this.audioSource?.stop?.();
+    window.removeEventListener("resize", this.resize);
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    this.resizeObserver?.disconnect();
+    this.particles.dispose();
+    this.coreField.dispose();
+    this.renderer.dispose();
+    if (this.canvas.parentElement === this.container) {
+      this.container.removeChild(this.canvas);
+    }
+  }
+  /** 读取当前平滑音频信号(供 HUD 显示)。 */
+  getSmoothedAudio() {
+    return { ...this.audioMap.smoothed };
+  }
+  static get palette() {
+    return STELLAR_PALETTE;
+  }
+};
+
+// effects/15-supernova-pulse/src/lib/stellar-engine/visual-scene-adapter.ts
+var SupernovaPulseVisualScene = class {
+  constructor(container) {
+    this.input = new ReactiveInputState();
+    this.culture = "";
+    this.engine = new StellarEngine({ container, params: { syntheticBeat: false } });
+    this.engine.start();
+    this.setAudioData({});
+  }
+  apply(frame) {
+    this.engine.setAudioFrame({
+      amplitude: frame.amplitude,
+      bass: frame.bass,
+      mid: frame.mid,
+      high: frame.high,
+      beat: frame.beat,
+      drone: Math.max(frame.drone, frame.energy * 0.35)
+    });
+  }
+  setAudioData(data) {
+    this.apply(this.input.setAudioData(data));
+  }
+  triggerEvent(event) {
+    const frame = this.input.triggerEvent(event);
+    this.apply(frame);
+    if (event.type === "kick") {
+      this.engine.triggerInteraction("tap", { power: Math.max(0.35, event.intensity ?? 1) });
+    }
+  }
+  triggerStar(star) {
+    const point = starPoint(star);
+    this.engine.triggerInteraction("tap", { x: point.x, y: point.y, power: star.intensity ?? 1 });
+  }
+  setCulture(culture) {
+    this.culture = culture;
+  }
+  start() {
+    this.engine.start();
+  }
+  stop() {
+    this.engine.stop();
+  }
+  resize() {
+    this.engine.resize();
+  }
+  dispose() {
+    this.engine.destroy();
+  }
+};
+function createSupernovaPulseVisualScene({ container }) {
+  return new SupernovaPulseVisualScene(container);
+}
 export {
-  StellarSynthScene
+  SupernovaPulseVisualScene,
+  createSupernovaPulseVisualScene
 };
 /*! Bundled license information:
 
