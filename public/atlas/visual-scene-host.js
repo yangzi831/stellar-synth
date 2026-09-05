@@ -84,7 +84,7 @@ function suppressCentralMarker(instance) {
 }
 
 const factories = {
-  'concentric-field': async ({ host }) => { const canvas = makeCanvas(host); const { width, height } = size(); return wrap(createConcentricFieldScene({ canvas, width, height, particleCount: 130000, simulateAudio: false, params: { energy: 0.62, density: 0.9, colorMix: 0.42, rotationSpeed: 1 } }), { canvas, host, audio: frameState() }); },
+  'concentric-field': async ({ host }) => { const canvas = makeCanvas(host); const { width, height } = size(); const scene = createConcentricFieldScene({ canvas, width, height, particleCount: 130000, simulateAudio: false, params: SCENE_PROFILES['concentric-field'].params }); scene.start(); return wrap(scene, { canvas, host, audio: frameState() }); },
   'audio-reactive-cosmos': async ({ host }) => { const canvas = makeCanvas(host); const scene = new CosmosScene({ autoStart: true, maxPixelRatio: 1.5, params: SCENE_PROFILES['audio-reactive-cosmos'].params }); scene.mount(canvas); suppressCentralMarker(scene); return wrap(scene, { canvas, host, audio: frameState() }); },
   'resonant-nebula': async ({ host }) => { const canvas = makeCanvas(host); const scene = new NebulaEngine({ canvas, initialScene: 'black-hole' }); await scene.start(); return wrap(scene, { canvas, host, audio: frameState() }); },
   'invisible-universe': async ({ host }) => { const audio = frameState(); const scene = new ParticleEngine(host, () => ({ lo: audio.bass, mid: audio.mid, hi: audio.high })); scene.setSettings(SCENE_PROFILES['invisible-universe'].params); scene.start(); return wrap(scene, { host, audio }); },
