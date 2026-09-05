@@ -5,7 +5,7 @@ import { StellarEngine as NebulaEngine } from './visual-scenes/resonant-nebula.j
 import { ParticleEngine } from './visual-scenes/invisible-universe.js';
 import { VisualEngine as AuroraEngine } from './visual-scenes/aurora-core.js';
 import { StellarScene as MeridianScene } from './visual-scenes/silver-meridian.js';
-import { StellarEngine as VeilEngine } from './visual-scenes/thread-veil.js';
+import { createStellarEngine as createVeilEngine } from './visual-scenes/thread-veil.js';
 import { StellarScene as PulseScene } from './visual-scenes/constellation-pulse-a.js';
 import { StellarScene as PulseSceneB } from './visual-scenes/constellation-pulse-b.js';
 import { StellarEngine as CipherEngine } from './visual-scenes/constellation-cipher.js';
@@ -53,20 +53,21 @@ const SCENE_PROFILES = Object.freeze({
   // Atlas view is visible but deliberately held behind the foreground map.
   // Focus/playing returns the authored scene to essentially its native light.
   'constellation-cipher': { atlas: .74, focus: .98, atlasFilter: 'brightness(.84) saturate(.72) contrast(1.04)', focusFilter: 'brightness(1) saturate(.86) contrast(1.02)', params: { accentColor: '#4d5157', secondaryColor: '#8a8e94', audioSensitivity: .90, lineCount: 44 } },
-  'invisible-universe': { atlas: .76, focus: 1, atlasFilter: 'brightness(.80) contrast(1.06)', focusFilter: 'brightness(1) contrast(1.02)', params: { glow: .62, density: .62, sensitivity: .92, links: .18 } },
+  'invisible-universe': { atlas: .88, focus: 1, atlasFilter: 'brightness(1.05) contrast(1.04)', focusFilter: 'brightness(1) contrast(1.02)', params: { glow: .62, density: .62, sensitivity: .92, links: .18 }, atlasParams: { glow: .72, density: .68, sensitivity: 1.05 } },
   'audio-reactive-cosmos': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.82) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.94) contrast(1.02)', params: { brightness: .68, bloomStrength: .38, audioReactivity: .92 } },
-  'constellation-pulse-a': { atlas: .80, focus: 1, atlasFilter: 'brightness(.90) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { colorCoral: '#8b7770', colorBone: '#858585', colorBoneSoft: '#a3a3a3' } },
-  'constellation-pulse-b': { atlas: .78, focus: 1, atlasFilter: 'brightness(.88) saturate(.80) contrast(1.04)', focusFilter: 'brightness(1) saturate(.90) contrast(1.01)', params: { colorCoral: '#777b81', colorBone: '#858a90', colorBoneSoft: '#aeb2b6' } },
+  'constellation-pulse-a': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { colorCoral: '#8b7770', colorBone: '#858585', colorBoneSoft: '#a3a3a3' } },
+  'constellation-pulse-b': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.05) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.90) contrast(1.01)', params: { colorCoral: '#777b81', colorBone: '#858a90', colorBoneSoft: '#aeb2b6' } },
   'aurora-core': { atlas: .68, focus: .94, atlasFilter: 'brightness(.78) saturate(.76) contrast(1.07)', focusFilter: 'brightness(.96) saturate(.88) contrast(1.02)' },
-  'resonant-nebula': { atlas: .74, focus: .96, atlasFilter: 'brightness(.84) saturate(.80) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.01)' },
-  'orbital-cartography': { atlas: .78, focus: 1, atlasFilter: 'brightness(.88) saturate(.82) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { glow: .70, particleCount: 30000 } },
-  'stellar-vortex-core': { atlas: .76, focus: 1, atlasFilter: 'brightness(.84) saturate(.82) contrast(1.04)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { particleCount: 30000 } },
-  'thread-veil': { atlas: .78, focus: 1, atlasFilter: 'brightness(.88) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)' },
-  'constellation-weave': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.78) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleCount: 56000, audioSensitivity: .88 } },
-  'night-stardust': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.80) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.02)', params: { particleCount: 36000 } },
-  'silver-meridian': { atlas: .78, focus: 1, atlasFilter: 'brightness(.88) saturate(.82) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)' },
-  'supernova-pulse': { atlas: .72, focus: .96, atlasFilter: 'brightness(.82) saturate(.80) contrast(1.05)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleCount: 30000 } },
-  'concentric-field': { atlas: .80, focus: 1, atlasFilter: 'brightness(.90) saturate(.84) contrast(1.03)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: .84, energy: .62, colorMix: .40 } },
+  'resonant-nebula': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.01)', params: { bloom: .5, sensitivity: .68 }, atlasParams: { bloom: .68, sensitivity: .82 } },
+  'orbital-cartography': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { glow: .70, particleCount: 30000 }, atlasParams: { glow: .84 } },
+  'stellar-vortex-core': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.03)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)', params: { particleCount: 30000, glow: 1 }, atlasParams: { glow: 1.12 } },
+  'thread-veil': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.16) saturate(.92) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: 1, glow: 1, veilOpacity: 1, rotationSpeed: .02 }, atlasParams: { density: 1.12, glow: 1.10, veilOpacity: 1.08, rotationSpeed: .026 } },
+  'constellation-weave': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.84) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleCount: 56000, audioSensitivity: .88, glowStrength: 1 }, atlasParams: { audioSensitivity: .98, glowStrength: 1.08 } },
+  'night-stardust': { atlas: .88, focus: .96, atlasFilter: 'brightness(1.06) saturate(.86) contrast(1.03)', focusFilter: 'brightness(.98) saturate(.92) contrast(1.02)', params: { particleCount: 36000, audioSensitivity: 1, bloom: 1 }, atlasParams: { audioSensitivity: 1.04, bloom: 1.08 } },
+  'silver-meridian': { atlas: .90, focus: 1, atlasFilter: 'brightness(1.08) saturate(.88) contrast(1.02)', focusFilter: 'brightness(1) saturate(.92) contrast(1.01)' },
+  'audio-reactive-star-chart': { atlas: .90, focus: .96, atlasFilter: 'brightness(1.08) saturate(.90) contrast(1.02)', focusFilter: 'brightness(.98)' },
+  'supernova-pulse': { atlas: .94, focus: .96, atlasFilter: 'brightness(1.16) saturate(.94) contrast(1.02)', focusFilter: 'brightness(.98) saturate(.90) contrast(1.02)', params: { particleSize: .05, brightnessGain: .34, beatGain: 1, coreExpandGain: .40 }, atlasParams: { particleSize: .058, brightnessGain: .50, beatGain: 1.15, coreExpandGain: .48 } },
+  'concentric-field': { atlas: .94, focus: 1, atlasFilter: 'brightness(1.15) saturate(.90) contrast(1.02)', focusFilter: 'brightness(1) saturate(.94) contrast(1.01)', params: { density: .84, energy: .62, colorMix: .40, interactionGain: 1, rotationSpeed: 1 }, atlasParams: { density: .92, energy: .74, colorMix: .42, interactionGain: 1.22, rotationSpeed: 1.18 } },
 });
 
 function suppressCentralMarker(instance) {
@@ -89,7 +90,7 @@ const factories = {
   'invisible-universe': async ({ host }) => { const audio = frameState(); const scene = new ParticleEngine(host, () => ({ lo: audio.bass, mid: audio.mid, hi: audio.high })); scene.setSettings(SCENE_PROFILES['invisible-universe'].params); scene.start(); return wrap(scene, { host, audio }); },
   'aurora-core': async ({ host }) => { const canvas = makeCanvas(host); const state = { bpm: 123, beat: 1, bar: 1, step: 1, energy: .2, scene: 0, holdDuration: 0, releaseAmount: 0, patternVariant: 0, isDown: false, mode: 'idle' }; const scene = new AuroraEngine(canvas, state); scene.start(); const wrapped = wrap(scene, { canvas, host, audio: state }); const setAudio = wrapped.setAudioData; wrapped.setAudioData = (next = {}) => { Object.assign(state, next, { energy: clamp(next.energy ?? next.amplitude ?? state.energy), releaseAmount: clamp(next.drone ?? state.releaseAmount), patternVariant: Math.round(clamp(next.mid ?? 0) * 3) }); setAudio(next); }; return wrapped; },
   'silver-meridian': async ({ host }) => { const canvas = makeCanvas(host); const scene = new MeridianScene(); scene.mount(canvas); scene.setAudioSource('external'); return wrap(scene, { canvas, host, audio: frameState() }); },
-  'thread-veil': async ({ host }) => { const canvas = makeCanvas(host); const audio = frameState(); const scene = new VeilEngine(canvas); scene.setAudioSource({ read: () => ({ amplitude: audio.amplitude, frequency: 220 + audio.mid * 440, brightness: audio.high, energy: audio.energy, beat: audio.beat }) }); scene.start(); return wrap(scene, { canvas, host, audio }); },
+  'thread-veil': async ({ host }) => { const canvas = makeCanvas(host); const audio = frameState(); const scene = createVeilEngine(canvas, { params: SCENE_PROFILES['thread-veil'].params }); scene.setAudioSource({ read: () => ({ amplitude: audio.amplitude, frequency: 220 + audio.mid * 440, brightness: audio.high, energy: audio.energy, beat: audio.beat }) }); scene.start(); return wrap(scene, { canvas, host, audio }); },
   'constellation-pulse-a': async ({ host }) => { const audio = frameState(); const scene = new PulseScene(host, { ambientDrive: false, ...(SCENE_PROFILES['constellation-pulse-a'].params || {}) }); scene.start(); suppressCentralMarker(scene); return wrap(scene, { host, audio }); },
   'constellation-pulse-b': async ({ host }) => { const audio = frameState(); const scene = new PulseSceneB(host, { ambientDrive: false, ...(SCENE_PROFILES['constellation-pulse-b'].params || {}) }); scene.start(); suppressCentralMarker(scene); return wrap(scene, { host, audio }); },
   'constellation-cipher': async ({ host }) => { const canvas = makeCanvas(host); const scene = new CipherEngine(SCENE_PROFILES['constellation-cipher'].params); scene.mount(canvas); return wrap(scene, { canvas, host, audio: frameState() }); },
@@ -97,7 +98,7 @@ const factories = {
   'night-stardust': async ({ host }) => { const scene = new StardustEngine({ useSimulator: false, params: SCENE_PROFILES['night-stardust'].params }); scene.mount(host); return wrap(scene, { host, audio: frameState() }); },
   'stellar-vortex-core': async ({ host }) => { const canvas = makeCanvas(host); const scene = new VortexEngine({ useMockAudio: false, params: SCENE_PROFILES['stellar-vortex-core'].params }); scene.init(canvas); scene.start(); return wrap(scene, { canvas, host, audio: frameState() }); },
   'audio-reactive-star-chart': async ({ host }) => wrap(new ChartScene(host), { host, audio: frameState(), starMode: 'data' }),
-  'supernova-pulse': async ({ host }) => { const scene = new SupernovaScene({ container: host, params: { syntheticBeat: false, ...(SCENE_PROFILES['supernova-pulse'].params || {}) } }); suppressCentralMarker(scene); return wrap(scene, { host, audio: frameState(), destroy: 'dispose', starMode: 'data' }); },
+  'supernova-pulse': async ({ host }) => { const scene = new SupernovaScene(host); scene.engine?.setParams?.(SCENE_PROFILES['supernova-pulse'].params || {}); return wrap(scene, { host, audio: frameState(), destroy: 'dispose', starMode: 'data' }); },
   'orbital-cartography': async ({ host }) => { const scene = new OrbitalScene({ simulateAudio: false, params: SCENE_PROFILES['orbital-cartography'].params }); scene.mount(host); return wrap(scene, { host, audio: frameState(), destroy: 'destroy' }); },
 };
 
@@ -117,6 +118,7 @@ export class VisualSceneHost {
     this.host.style.setProperty('--visual-opacity', String(opacity));
     const filter = this.presentationMode === 'atlas' ? profile.atlasFilter : profile.focusFilter;
     this.host.style.setProperty('--visual-filter', filter || 'none');
+    this.api.setParams({ ...(profile.params || {}), ...(this.presentationMode === 'atlas' ? profile.atlasParams || {} : {}) });
     this.host.dataset.visualPresentation = this.presentationMode;
   }
   get activeScene() { return this.api.scene; }
