@@ -130,6 +130,7 @@ assert(audio.includes('if (!this.running) await this.start();'), 'Entering LOOP 
 assert(app.includes('activeTouchPointers') && app.includes('pinchGesture'), 'Mobile two-finger pan/zoom state is missing.');
 assert(app.includes("event.pointerType === 'touch' ? 28 : 14"), 'Touch stars need a larger playable hit target than mouse stars.');
 assert(app.includes('mobileDetailQuery.matches'), 'PLAY details must have a mobile-only collapsed default.');
+assert(app.includes('setPerformanceMode(\'star\');\n        setMode(\'play\');\n        showDetail(item);\n        enterLandmark(item, true);'), 'Mobile constellation taps must enter PLAY and autoplay.');
 assert(css.includes('.detail.collapsed') && css.includes('background: rgba(4,4,4,.46)'), 'Collapsed mobile landmark identity must use a translucent surface.');
 assert(app.includes("loop.stage?.id === 'drums'"), 'Only the DRUM stage may assign Q/W drum roles inside LOOP.');
 assert(app.includes('requestedIndex % audio.sequence.length'), 'Every displayed Star key must wrap to an audible star.');

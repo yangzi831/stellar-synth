@@ -1521,6 +1521,15 @@ stage.addEventListener('pointerup', (event) => {
       if (state.mode === 'play') {
         showDetail(item);
         enterLandmark(item, true);
+      } else if (state.mode === 'atlas' && mobileDetailQuery.matches) {
+        // On a phone, a constellation tap is the primary entry gesture: move
+        // directly from the all-sky atlas into PLAY so the first touch both
+        // opens the compact identity card and starts the musical landmark.
+        // Desktop keeps the existing focus-first atlas behaviour.
+        setPerformanceMode('star');
+        setMode('play');
+        showDetail(item);
+        enterLandmark(item, true);
       } else focusLandmark(item);
     }
   }
@@ -1933,7 +1942,15 @@ $('#reset-view').addEventListener('click', () => {
 $('#landmark-select').addEventListener('change', (event) => {
   const item = culture().constellations.find((entry) => entry.id === event.target.value);
   if (!item) return;
-  if (state.mode === 'play') { showDetail(item); enterLandmark(item, false); }
+  if (state.mode === 'play') {
+    showDetail(item);
+    enterLandmark(item, mobileDetailQuery.matches);
+  } else if (state.mode === 'atlas' && mobileDetailQuery.matches) {
+    setPerformanceMode('star');
+    setMode('play');
+    showDetail(item);
+    enterLandmark(item, true);
+  }
   else focusLandmark(item);
 });
 function returnToCultureSelection() {
