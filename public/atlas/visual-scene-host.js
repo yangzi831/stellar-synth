@@ -47,7 +47,17 @@ function wrapScene(instance, { canvas, start = true } = {}) {
 const factories = {
   'concentric-field': async ({ canvas }) => {
     const { width, height } = size();
-    const scene = createConcentricFieldScene({ canvas, width, height, particleCount: 130000, simulateAudio: false });
+    const scene = createConcentricFieldScene({
+      canvas,
+      width,
+      height,
+      particleCount: 130000,
+      simulateAudio: false,
+      // Preserve Scene 19's authored field density at host contrast. The
+      // renderer remains the original particle shader scene; no substitute
+      // ring canvas or geometry layer is introduced here.
+      params: { energy: 0.62, density: 0.9, colorMix: 0.42, rotationSpeed: 1 },
+    });
     return wrapScene(scene, { canvas });
   },
   'audio-reactive-cosmos': async ({ canvas }) => {
@@ -82,6 +92,7 @@ export class VisualSceneHost {
     if (sceneId !== this.sceneId) {
       this.sceneId = sceneId;
       await this.api.loadScene(sceneId, { canvas: this.canvas });
+      this.canvas.dataset.visualScene = sceneId;
       this.api.setCulture(cultureId);
       this.api.setAudioData(this.lastFrame);
     }

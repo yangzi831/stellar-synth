@@ -1,4 +1,8 @@
-// effects/19-concentric-field/node_modules/three/build/three.core.js
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+// node_modules/three/build/three.core.js
 var REVISION = "185";
 var CullFaceNone = 0;
 var CullFaceBack = 1;
@@ -382,10 +386,7 @@ function normalize(value, array) {
       throw new Error("THREE.MathUtils: Invalid component type.");
   }
 }
-var Vector2 = class _Vector2 {
-  static {
-    _Vector2.prototype.isVector2 = true;
-  }
+var _Vector2 = class _Vector2 {
   /**
    * Constructs a new 2D vector.
    *
@@ -992,6 +993,8 @@ var Vector2 = class _Vector2 {
     yield this.y;
   }
 };
+_Vector2.prototype.isVector2 = true;
+var Vector2 = _Vector2;
 var Quaternion = class {
   /**
    * Constructs a new quaternion.
@@ -1609,10 +1612,7 @@ var Quaternion = class {
     yield this._w;
   }
 };
-var Vector3 = class _Vector3 {
-  static {
-    _Vector3.prototype.isVector3 = true;
-  }
+var _Vector3 = class _Vector3 {
   /**
    * Constructs a new 3D vector.
    *
@@ -2515,12 +2515,11 @@ var Vector3 = class _Vector3 {
     yield this.z;
   }
 };
+_Vector3.prototype.isVector3 = true;
+var Vector3 = _Vector3;
 var _vector$c = /* @__PURE__ */ new Vector3();
 var _quaternion$5 = /* @__PURE__ */ new Quaternion();
-var Matrix3 = class _Matrix3 {
-  static {
-    _Matrix3.prototype.isMatrix3 = true;
-  }
+var _Matrix3 = class _Matrix3 {
   /**
    * Constructs a new 3x3 matrix. The arguments are supposed to be
    * in row-major order. If no arguments are provided, the constructor
@@ -3002,6 +3001,8 @@ var Matrix3 = class _Matrix3 {
     return new this.constructor().fromArray(this.elements);
   }
 };
+_Matrix3.prototype.isMatrix3 = true;
+var Matrix3 = _Matrix3;
 var _m3 = /* @__PURE__ */ new Matrix3();
 var LINEAR_REC709_TO_XYZ = /* @__PURE__ */ new Matrix3().set(
   0.4123908,
@@ -3635,10 +3636,7 @@ var Texture = class _Texture extends EventDispatcher {
 Texture.DEFAULT_IMAGE = null;
 Texture.DEFAULT_MAPPING = UVMapping;
 Texture.DEFAULT_ANISOTROPY = 1;
-var Vector4 = class _Vector4 {
-  static {
-    _Vector4.prototype.isVector4 = true;
-  }
+var _Vector4 = class _Vector4 {
   /**
    * Constructs a new 4D vector.
    *
@@ -4367,6 +4365,8 @@ var Vector4 = class _Vector4 {
     yield this.w;
   }
 };
+_Vector4.prototype.isVector4 = true;
+var Vector4 = _Vector4;
 var RenderTarget = class extends EventDispatcher {
   /**
    * Render target options.
@@ -4646,10 +4646,7 @@ var Data3DTexture = class extends Texture {
     this.unpackAlignment = 1;
   }
 };
-var Matrix4 = class _Matrix4 {
-  static {
-    _Matrix4.prototype.isMatrix4 = true;
-  }
+var _Matrix4 = class _Matrix4 {
   /**
    * Constructs a new 4x4 matrix. The arguments are supposed to be
    * in row-major order. If no arguments are provided, the constructor
@@ -5782,6 +5779,8 @@ var Matrix4 = class _Matrix4 {
     return array;
   }
 };
+_Matrix4.prototype.isMatrix4 = true;
+var Matrix4 = _Matrix4;
 var _v1$7 = /* @__PURE__ */ new Vector3();
 var _m1$2 = /* @__PURE__ */ new Matrix4();
 var _zero = /* @__PURE__ */ new Vector3(0, 0, 0);
@@ -14982,10 +14981,7 @@ PropertyBinding.prototype.SetterByBindingTypeAndVersioning = [
   ]
 ];
 var _controlInterpolantsResultBuffer = new Float32Array(1);
-var Matrix2 = class _Matrix2 {
-  static {
-    _Matrix2.prototype.isMatrix2 = true;
-  }
+var _Matrix2 = class _Matrix2 {
   /**
    * Constructs a new 2x2 matrix. The arguments are supposed to be
    * in row-major order. If no arguments are provided, the constructor
@@ -15053,6 +15049,8 @@ var Matrix2 = class _Matrix2 {
     return this;
   }
 };
+_Matrix2.prototype.isMatrix2 = true;
+var Matrix2 = _Matrix2;
 function getByteLength(width, height, format, type) {
   const typeByteLength = getTextureTypeByteLength(type);
   switch (format) {
@@ -15178,7 +15176,7 @@ if (typeof window !== "undefined") {
   }
 }
 
-// effects/19-concentric-field/node_modules/three/build/three.module.js
+// node_modules/three/build/three.module.js
 function WebGLAnimation() {
   let context = null;
   let isAnimating = false;
@@ -26632,7 +26630,7 @@ var WebGLRenderer = class {
   }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/types.ts
+// src/lib/stellar-synth/types.ts
 var EMPTY_AUDIO_FRAME = {
   amplitude: 0,
   bass: 0,
@@ -26649,7 +26647,17 @@ var DEFAULT_ENGINE_PARAMS = {
   rotationSpeed: 1
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/config.ts
+// src/lib/stellar-synth/config.ts
+var PALETTE = {
+  background: "#060608",
+  /** 冷青 —— 低频段 / 内圈色标 */
+  cyan: { r: 0.18, g: 0.49, b: 0.6 },
+  // #2E7D9A
+  /** 暖金 —— 高频段 / 外圈色标 */
+  gold: { r: 0.88, g: 0.7, b: 0.23 },
+  // #E0B23C
+  ink: "#eee9dd"
+};
 var PARTICLE_CONFIG = {
   /** 默认粒子总数。细小、密集,不做少数大光点。 */
   count: 13e4,
@@ -26667,6 +26675,26 @@ var CAMERA_CONFIG = {
   near: 0.1,
   far: 90,
   z: 24
+};
+var AUDIO_MAPPING = {
+  /** amplitude → 粒子基础尺寸增益 */
+  amplitudeSize: 1.6,
+  /** amplitude → 节拍波瓣强度 */
+  amplitudeBeat: 1,
+  /** bass → 半径膨胀(核心膨胀 / 旋涡牵引) */
+  bassRadius: 0.08,
+  /** bass → 大尺度行进波强度 */
+  bassWave: 1,
+  /** mid → 角速度扰动(流线重组) */
+  midSpin: 0.05,
+  /** high → 半径抖动(微粒跳动) */
+  highRadius: 0.11,
+  /** high → 尺寸闪烁 */
+  highSize: 1.2,
+  /** drone → 整体缩放呼吸 */
+  droneScale: 0.05,
+  /** beat 环形扩散在半径上的宽度 */
+  beatBandWidth: 0.18
 };
 var INTERACTION_CONFIG = {
   /** hold 聚能上升速度(每秒)。放缓=更丝滑地聚能。 */
@@ -26694,7 +26722,7 @@ var SIMULATION_CONFIG = {
   beat: { freq: 3.1, threshold: 0.88 }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/field.ts
+// src/lib/stellar-synth/field.ts
 var FIELD_VERTEX_SHADER = (
   /* glsl */
   `
@@ -26748,9 +26776,14 @@ void main() {
   gl_PointSize = clamp(size, 0.4, 4.2);
 
   // --- \u4EAE\u5EA6:\u57FA\u7840 + \u6DF1\u5EA6\u5C42\u6B21 + \u8282\u62CD/\u6CE2\u74E3\u53E0\u52A0;density \u6291\u5236\u6697\u6DE1\u7C92\u5B50 ---
+  // The field is intentionally still particle-only (there is no second ring
+  // mesh). A restrained radial banding term makes the source distribution's
+  // concentric structure legible at the lower contrast used by host apps.
+  float ringBand = 0.78 + 0.22 * (0.5 + 0.5 * sin(seed.x * 3.55));
+  float radialSpoke = 0.92 + 0.08 * (0.5 + 0.5 * cos(seed.y * 16.0 + seed.x * 0.25));
   float base = 0.30 + seed.z * 0.52;
   float densityGate = step(1.0 - uDensity, seed.z * 0.5 + 0.5);
-  vBright = (base + beat + wave * 0.4) * mix(0.32, 1.0, densityGate);
+  vBright = (base + beat + wave * 0.4) * ringBand * radialSpoke * mix(0.32, 1.0, densityGate);
 
   // --- \u989C\u8272:\u901A\u900F\u51B7\u9752 \u2192 \u67D4\u548C\u6696\u767D\u91D1,\u514B\u5236\u7684\u51B7\u6696\u5BF9\u6BD4(\u964D\u4F4E\u571F\u9EC4\u611F) ---
   vec3 cool = vec3(0.16, 0.55, 0.72);   // \u901A\u900F\u51B7\u9752\u84DD
@@ -26780,12 +26813,12 @@ void main() {
 `
 );
 
-// effects/19-concentric-field/src/lib/stellar-synth/particle-system.ts
+// src/lib/stellar-synth/particle-system.ts
 var ParticleSystem = class {
-  points;
-  geometry;
-  material;
   constructor(count = PARTICLE_CONFIG.count) {
+    __publicField(this, "points");
+    __publicField(this, "geometry");
+    __publicField(this, "material");
     const { maxRadius, radiusBias, flatten: flatten2, depth } = PARTICLE_CONFIG;
     const geo = new BufferGeometry();
     const pos = new Float32Array(count * 3);
@@ -26847,19 +26880,21 @@ var ParticleSystem = class {
   }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/interaction-controller.ts
+// src/lib/stellar-synth/interaction-controller.ts
 var InteractionController = class {
-  /** 平滑后的指针位置(视差用),(0,0) 为中心。 */
-  pointer = { x: 0, y: 0 };
-  pointerTarget = { x: 0, y: 0 };
-  /** 最近一次脉冲位置。 */
-  pulse = { x: 0, y: 0 };
-  /** 脉冲发生的时间戳(秒);-999 表示尚无脉冲。 */
-  pulseAt = -999;
-  /** 聚能量 0–1。 */
-  holdValue = 0;
-  /** 是否正处于按压中。 */
-  pressing = false;
+  constructor() {
+    /** 平滑后的指针位置(视差用),(0,0) 为中心。 */
+    __publicField(this, "pointer", { x: 0, y: 0 });
+    __publicField(this, "pointerTarget", { x: 0, y: 0 });
+    /** 最近一次脉冲位置。 */
+    __publicField(this, "pulse", { x: 0, y: 0 });
+    /** 脉冲发生的时间戳(秒);-999 表示尚无脉冲。 */
+    __publicField(this, "pulseAt", -999);
+    /** 聚能量 0–1。 */
+    __publicField(this, "holdValue", 0);
+    /** 是否正处于按压中。 */
+    __publicField(this, "pressing", false);
+  }
   /** 点击:激发脉冲波。 */
   tap(point, now) {
     this.pulse.x = point.x;
@@ -26910,16 +26945,16 @@ var InteractionController = class {
   }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/audio-reactive-mapping.ts
+// src/lib/stellar-synth/audio-reactive-mapping.ts
 var AudioReactiveMapping = class {
-  /** 当前(已平滑)的音频帧。 */
-  frame = { ...EMPTY_AUDIO_FRAME, amplitude: 0.45, drone: 0.35 };
-  /** 外部注入的目标帧(setFrame 写入,loop 中平滑逼近)。 */
-  target = { ...this.frame };
-  simulate;
-  /** beat 是脉冲量,不做平滑;记录上一次模拟 beat 状态用于边沿检测。 */
-  lastSimBeatHigh = false;
   constructor(simulate = true) {
+    /** 当前(已平滑)的音频帧。 */
+    __publicField(this, "frame", { ...EMPTY_AUDIO_FRAME, amplitude: 0.45, drone: 0.35 });
+    /** 外部注入的目标帧(setFrame 写入,loop 中平滑逼近)。 */
+    __publicField(this, "target", { ...this.frame });
+    __publicField(this, "simulate");
+    /** beat 是脉冲量,不做平滑;记录上一次模拟 beat 状态用于边沿检测。 */
+    __publicField(this, "lastSimBeatHigh", false);
     this.simulate = simulate;
   }
   setSimulation(on) {
@@ -26961,24 +26996,24 @@ var AudioReactiveMapping = class {
   }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/scene.ts
+// src/lib/stellar-synth/scene.ts
 var StellarSynthScene = class {
-  renderer;
-  scene;
-  camera;
-  particles;
-  interaction;
-  audio;
-  params;
-  raf = 0;
-  lastT = 0;
-  running = false;
-  width;
-  height;
-  reducedMotion;
-  resizeObserver;
-  canvas;
   constructor(opts) {
+    __publicField(this, "renderer");
+    __publicField(this, "scene");
+    __publicField(this, "camera");
+    __publicField(this, "particles");
+    __publicField(this, "interaction");
+    __publicField(this, "audio");
+    __publicField(this, "params");
+    __publicField(this, "raf", 0);
+    __publicField(this, "lastT", 0);
+    __publicField(this, "running", false);
+    __publicField(this, "width");
+    __publicField(this, "height");
+    __publicField(this, "reducedMotion");
+    __publicField(this, "resizeObserver");
+    __publicField(this, "canvas");
     this.canvas = opts.canvas;
     this.width = opts.width;
     this.height = opts.height;
@@ -27113,7 +27148,90 @@ var StellarSynthScene = class {
   }
 };
 
-// effects/19-concentric-field/src/lib/stellar-synth/visual-scene-adapter.ts
+// src/lib/stellar-synth/web-audio-adapter.ts
+var clamp01 = (v) => Math.max(0, Math.min(1, v));
+var WebAudioAnalyser = class {
+  constructor() {
+    __publicField(this, "ctx");
+    __publicField(this, "analyser");
+    __publicField(this, "freq");
+    __publicField(this, "source");
+    __publicField(this, "beatEnergy", 0);
+    __publicField(this, "raf", 0);
+  }
+  ensureContext() {
+    if (!this.ctx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new Ctx();
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.analyser.smoothingTimeConstant = 0.8;
+      this.freq = new Uint8Array(this.analyser.frequencyBinCount);
+    }
+    return this.ctx;
+  }
+  /** 连接麦克风输入。 */
+  async connectMic() {
+    const ctx = this.ensureContext();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.source = ctx.createMediaStreamSource(stream);
+    this.source.connect(this.analyser);
+    if (ctx.state === "suspended") await ctx.resume();
+  }
+  /** 连接一个 <audio>/<video> 元素(会同时接到扬声器)。 */
+  connectElement(el) {
+    const ctx = this.ensureContext();
+    this.source = ctx.createMediaElementSource(el);
+    this.source.connect(this.analyser);
+    this.analyser.connect(ctx.destination);
+  }
+  /** 分析当前一帧频谱,返回归一化的六路 AudioFrame。 */
+  analyse() {
+    if (!this.analyser || !this.freq) {
+      return { amplitude: 0, bass: 0, mid: 0, high: 0, beat: 0, drone: 0 };
+    }
+    this.analyser.getByteFrequencyData(this.freq);
+    const bins = this.freq;
+    const n = bins.length;
+    const band = (from, to) => {
+      let sum = 0;
+      const a = Math.floor(from * n);
+      const b = Math.floor(to * n);
+      for (let i = a; i < b; i++) sum += bins[i];
+      return sum / Math.max(1, b - a) / 255;
+    };
+    const bass = clamp01(band(0, 0.08) * 1.1);
+    const mid = clamp01(band(0.08, 0.35));
+    const high = clamp01(band(0.35, 1) * 1.4);
+    const amplitude = clamp01((bass + mid + high) / 2.2);
+    const drone = clamp01(band(0, 0.03));
+    let beat = 0;
+    const flux = bass - this.beatEnergy;
+    if (flux > 0.12) beat = 1;
+    this.beatEnergy = this.beatEnergy * 0.9 + bass * 0.1;
+    return { amplitude, bass, mid, high, beat, drone };
+  }
+  /** 启动一个内部 rAF 循环,每帧把分析结果回调出去。返回停止函数。 */
+  pump(onFrame) {
+    const tick = () => {
+      onFrame(this.analyse());
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(this.raf);
+  }
+  dispose() {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    try {
+      this.source?.disconnect();
+    } catch {
+    }
+    void this.ctx?.close();
+    this.ctx = void 0;
+  }
+};
+
+// src/lib/stellar-synth/visual-scene-adapter.ts
 function toNormalizedPoint(star) {
   if (star.normalized && Number.isFinite(star.normalized.x) && Number.isFinite(star.normalized.y)) {
     return { x: Number(star.normalized.x), y: Number(star.normalized.y) };
@@ -27127,9 +27245,9 @@ function toNormalizedPoint(star) {
   return { x: 0, y: 0 };
 }
 var ConcentricFieldScene = class {
-  scene;
-  currentCulture = "";
   constructor(options) {
+    __publicField(this, "scene");
+    __publicField(this, "currentCulture", "");
     this.scene = new StellarSynthScene(options);
   }
   setAudioData(frame) {
@@ -27196,7 +27314,22 @@ function createConcentricFieldScene(options) {
   return new ConcentricFieldScene(options);
 }
 export {
+  AUDIO_MAPPING,
+  AudioReactiveMapping,
+  CAMERA_CONFIG,
   ConcentricFieldScene,
+  DEFAULT_ENGINE_PARAMS,
+  EMPTY_AUDIO_FRAME,
+  FIELD_FRAGMENT_SHADER,
+  FIELD_VERTEX_SHADER,
+  INTERACTION_CONFIG,
+  InteractionController,
+  PALETTE,
+  PARTICLE_CONFIG,
+  ParticleSystem,
+  SIMULATION_CONFIG,
+  StellarSynthScene,
+  WebAudioAnalyser,
   createConcentricFieldScene
 };
 /*! Bundled license information:
