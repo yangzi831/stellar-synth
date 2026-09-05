@@ -9,7 +9,7 @@
 const PAD_LIBRARY = Object.freeze([
   Object.freeze({
     id: 'logicmoon-c',
-    file: '/audio/atmosphere/641814__logicmoon__c.mp3',
+    file: '../audio/atmosphere/641814__logicmoon__c.mp3',
     // Linear gain, approximately -22 dB before the shared music bus.
     // User-requested second reduction: 50% of the previous calibrated level.
     gain: 0.026,
@@ -17,13 +17,13 @@ const PAD_LIBRARY = Object.freeze([
   }),
   Object.freeze({
     id: 'sergequadrad',
-    file: '/audio/atmosphere/654519__sergequadrad.mp3',
+    file: '../audio/atmosphere/654519__sergequadrad.mp3',
     gain: 0.024375,
     pan: 0.07,
   }),
   Object.freeze({
     id: 'newlocknew',
-    file: '/audio/atmosphere/725347__newlocknew__.mp3',
+    file: '../audio/atmosphere/725347__newlocknew__.mp3',
     // This source is quieter than the other two; give it a controlled 2x
     // source compensation while keeping the pad well below star voices.
     gain: 0.15,
@@ -42,21 +42,21 @@ const EXPLICIT_CULTURE_PADS = Object.freeze({
 const CULTURE_ATMOSPHERE = Object.freeze({
   western: Object.freeze({
     id: 'western-classical-choirs',
-    file: '/audio/atmosphere/culture/western-classical-choirs.mp3',
+    file: '../audio/atmosphere/culture/western-classical-choirs.mp3',
     gain: 0.026,
     pan: 0,
     reverb: 0.34,
   }),
   tukano: Object.freeze({
     id: 'tukano-natural',
-    file: '/audio/atmosphere/culture/tukano-natural.mp3',
+    file: '../audio/atmosphere/culture/tukano-natural.mp3',
     gain: 0.021,
     pan: -0.05,
     reverb: 0.38,
   }),
   inuit: Object.freeze({
     id: 'inuit-breath-texture',
-    file: '/audio/atmosphere/culture/inuit-breath-texture.mp3',
+    file: '../audio/atmosphere/culture/inuit-breath-texture.mp3',
     gain: 0.022,
     pan: 0.06,
     reverb: 0.4,

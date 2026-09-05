@@ -161,7 +161,7 @@ for (const cultureId of sharedInstrumentCultures) {
   const entries = sampleManifest.instruments?.[cultureId];
   assert(entries?.length >= 2 && entries.length <= 3, `${cultureId} must use a stable 2–3 sample subset.`);
   assert(new Set(entries).size === entries.length, `${cultureId} shared sample subset contains a duplicate.`);
-  const runtimeEntries = instrumentSetForCulture(cultureId)?.map((entry) => entry.file.replace(/^\/audio\//, '')) || [];
+  const runtimeEntries = instrumentSetForCulture(cultureId)?.map((entry) => entry.file.replace(/^(?:\/audio\/|\.\.\/audio\/)/, '')) || [];
   assert(JSON.stringify(runtimeEntries) === JSON.stringify(entries), `${cultureId} runtime and manifest sample mappings differ.`);
 }
 for (const cultureId of ['western', 'tukano', 'inuit']) assert(!instrumentSetForCulture(cultureId), `${cultureId} must retain its dedicated atmosphere without a shared instrument overlay.`);

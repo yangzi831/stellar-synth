@@ -7,23 +7,23 @@
  */
 const INSTRUMENT_LIBRARY = Object.freeze({
   china: Object.freeze([
-    Object.freeze({ id: 'china-01', file: '/audio/instruments/china-01.mp3', gain: 0.048, reverb: 0.2 }),
-    Object.freeze({ id: 'china-02', file: '/audio/instruments/china-02.mp3', gain: 0.048, reverb: 0.2 }),
-    Object.freeze({ id: 'china-03', file: '/audio/instruments/china-03.mp3', gain: 0.048, reverb: 0.2 }),
-    Object.freeze({ id: 'china-04', file: '/audio/instruments/china-04.mp3', gain: 0.048, reverb: 0.2 }),
+    Object.freeze({ id: 'china-01', file: '../audio/instruments/china-01.mp3', gain: 0.048, reverb: 0.2 }),
+    Object.freeze({ id: 'china-02', file: '../audio/instruments/china-02.mp3', gain: 0.048, reverb: 0.2 }),
+    Object.freeze({ id: 'china-03', file: '../audio/instruments/china-03.mp3', gain: 0.048, reverb: 0.2 }),
+    Object.freeze({ id: 'china-04', file: '../audio/instruments/china-04.mp3', gain: 0.048, reverb: 0.2 }),
   ]),
   navajo: Object.freeze([
-    Object.freeze({ id: 'navajo-01', file: '/audio/instruments/navajo-01.mp3', gain: 0.07, reverb: 0.24 }),
-    Object.freeze({ id: 'navajo-02', file: '/audio/instruments/navajo-02.mp3', gain: 0.075, reverb: 0.24 }),
-    Object.freeze({ id: 'navajo-03', file: '/audio/instruments/navajo-03.mp3', gain: 0.075, reverb: 0.24 }),
+    Object.freeze({ id: 'navajo-01', file: '../audio/instruments/navajo-01.mp3', gain: 0.07, reverb: 0.24 }),
+    Object.freeze({ id: 'navajo-02', file: '../audio/instruments/navajo-02.mp3', gain: 0.075, reverb: 0.24 }),
+    Object.freeze({ id: 'navajo-03', file: '../audio/instruments/navajo-03.mp3', gain: 0.075, reverb: 0.24 }),
   ]),
   shared: Object.freeze([
-    Object.freeze({ id: 'shared-sparkle', file: '/audio/instruments/shared/shared-sparkle.mp3', gain: 0.14, reverb: 0.22, duration: 0.57 }),
-    Object.freeze({ id: 'shared-twinkle', file: '/audio/instruments/shared/shared-twinkle.mp3', gain: 0.10, reverb: 0.28, duration: 1.4 }),
-    Object.freeze({ id: 'shared-shimmer', file: '/audio/instruments/shared/shared-shimmer.mp3', gain: 0.022, reverb: 0.25, duration: 1.65 }),
-    Object.freeze({ id: 'shared-ambient-chime', file: '/audio/instruments/shared/shared-ambient-chime.mp3', gain: 0.038, reverb: 0.30, duration: 1.7 }),
-    Object.freeze({ id: 'shared-synth-drone', file: '/audio/instruments/shared/shared-synth-drone.mp3', gain: 0.018, reverb: 0.24, duration: 1.1 }),
-    Object.freeze({ id: 'shared-auen9', file: '/audio/instruments/shared/shared-auen9.mp3', gain: 0.07, reverb: 0.26, duration: 1.5 }),
+    Object.freeze({ id: 'shared-sparkle', file: '../audio/instruments/shared/shared-sparkle.mp3', gain: 0.14, reverb: 0.22, duration: 0.57 }),
+    Object.freeze({ id: 'shared-twinkle', file: '../audio/instruments/shared/shared-twinkle.mp3', gain: 0.10, reverb: 0.28, duration: 1.4 }),
+    Object.freeze({ id: 'shared-shimmer', file: '../audio/instruments/shared/shared-shimmer.mp3', gain: 0.022, reverb: 0.25, duration: 1.65 }),
+    Object.freeze({ id: 'shared-ambient-chime', file: '../audio/instruments/shared/shared-ambient-chime.mp3', gain: 0.038, reverb: 0.30, duration: 1.7 }),
+    Object.freeze({ id: 'shared-synth-drone', file: '../audio/instruments/shared/shared-synth-drone.mp3', gain: 0.018, reverb: 0.24, duration: 1.1 }),
+    Object.freeze({ id: 'shared-auen9', file: '../audio/instruments/shared/shared-auen9.mp3', gain: 0.07, reverb: 0.26, duration: 1.5 }),
   ]),
 });
 
